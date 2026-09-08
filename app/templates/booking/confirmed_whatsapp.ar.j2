@@ -1,0 +1,18 @@
+✅ *تم تأكيد الحجز* — USHSPA
+
+عزيزي {{ customer_name | default('العميل العزيز') }}،
+
+تم تأكيد حجزك بنجاح. تفاصيل الحجز:
+
+📅 *التاريخ:* {{ appointment_date }}
+🕐 *الوقت:* {{ appointment_time }}{% if appointment_end_time %}–{{ appointment_end_time }}{% endif %}
+{% if therapist_name %}💆 *المعالج:* {{ therapist_name }}{% endif %}
+{% if service_name %}🧴 *الخدمة:* {{ service_name }}{% endif %}
+{% if branch_name %}📍 *الفرع:* {{ branch_name }}{% endif %}
+{% if total_amount %}💳 *المبلغ المدفوع:* {{ total_amount }} {{ currency | default('KWD') }}{% endif %}
+{% if booking_reference %}🔖 *رقم المرجع:* {{ booking_reference }}{% endif %}
+
+نتطلع للترحيب بك! يرجى الحضور قبل الموعد بـ 5 دقائق.
+
+للمساعدة، يرجى التواصل معنا في أي وقت.
+— فريق USHSPA

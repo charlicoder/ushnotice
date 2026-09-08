@@ -1,0 +1,15 @@
+Hi {{ customer_name | default('there') }},
+
+Your booking has been confirmed!
+
+Booking Reference: {{ booking_reference }}
+Branch: {{ branch_name }}
+Service: {{ service_name }}{% if service_arrangement %} — {{ service_arrangement }}{% endif %}
+
+Date: {{ appointment_date }}
+Time: {{ appointment_time }}
+{% if therapist_name %}Therapist: {{ therapist_name }}{% endif %}
+{% if amount %}Amount: {{ currency | default('KWD') }} {{ amount }}{% endif %}
+
+For any changes, please contact us.
+— USHSPA

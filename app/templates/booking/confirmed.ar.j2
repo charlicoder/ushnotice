@@ -1,0 +1,15 @@
+مرحباً {{ customer_name | default('') }}،
+
+تم تأكيد حجزك!
+
+رقم الحجز: {{ booking_reference }}
+الفرع: {{ branch_name }}
+الخدمة: {{ service_name }}{% if service_arrangement %} — {{ service_arrangement }}{% endif %}
+
+التاريخ: {{ appointment_date }}
+الوقت: {{ appointment_time }}
+{% if therapist_name %}المعالج: {{ therapist_name }}{% endif %}
+{% if amount %}المبلغ: {{ amount }} {{ currency | default('KWD') }}{% endif %}
+
+للاستفسار أو التعديل، يرجى التواصل معنا.
+— USHSPA

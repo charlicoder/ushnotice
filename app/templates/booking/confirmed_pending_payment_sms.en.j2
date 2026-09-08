@@ -1,0 +1,1 @@
+USHSPA: Hi {{ customer_name.split()[0] if customer_name else 'Customer' }}, your booking for {{ appointment_date }} at {{ appointment_time }} is confirmed. Please pay{% if total_amount %} {{ total_amount }} {{ currency | default('KWD') }}{% endif %} to secure your slot: {{ payment_link }}

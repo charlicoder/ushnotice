@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your USHSPA Gift Has Been Redeemed</title>
+</head>
+<body style="margin:0;padding:0;background-color:#DACDC1;font-family:'Helvetica Neue',Arial,sans-serif;color:#3a2a1e;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#DACDC1;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:600px;width:100%;background-color:#E9E2D9;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(84,60,48,0.12);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#543C30;padding:32px 40px;text-align:center;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="120" height="44" viewBox="0 0 240 88" aria-label="USHSPA Logo">
+                <rect width="240" height="88" rx="8" fill="#543C30"/>
+                <ellipse cx="120" cy="28" rx="18" ry="8" fill="none" stroke="#E9E2D9" stroke-width="2"/>
+                <ellipse cx="108" cy="35" rx="14" ry="6" fill="none" stroke="#E9E2D9" stroke-width="1.5" transform="rotate(-30 108 35)"/>
+                <ellipse cx="132" cy="35" rx="14" ry="6" fill="none" stroke="#E9E2D9" stroke-width="1.5" transform="rotate(30 132 35)"/>
+                <line x1="120" y1="36" x2="120" y2="48" stroke="#E9E2D9" stroke-width="1.5"/>
+                <text x="120" y="70" text-anchor="middle" font-family="Georgia,serif" font-size="22" letter-spacing="6" fill="#E9E2D9" font-weight="bold">USHSPA</text>
+              </svg>
+              <p style="margin:10px 0 0;color:#DACDC1;font-size:12px;letter-spacing:2px;text-transform:uppercase;">Luxury Spa &amp; Wellness</p>
+            </td>
+          </tr>
+
+          <!-- Hero badge -->
+          <tr>
+            <td style="background-color:#6b4c3b;padding:16px 40px;text-align:center;">
+              <span style="display:inline-block;background:#E9E2D9;color:#543C30;border-radius:50px;padding:8px 28px;font-size:14px;font-weight:700;letter-spacing:1px;">
+                🎉 &nbsp;Gift Redeemed!
+              </span>
+            </td>
+          </tr>
+
+          <!-- Greeting -->
+          <tr>
+            <td style="padding:32px 40px 8px;">
+              <p style="margin:0;font-size:16px;color:#3a2a1e;">
+                Dear <strong>{{ customer_name | default('Valued Customer') }}</strong>,
+              </p>
+              <p style="margin:12px 0 0;font-size:15px;color:#5c4030;line-height:1.7;">
+                Wonderful news! <strong>{{ recipient_name }}</strong> has redeemed the USHSPA gift you sent.
+                An appointment has been successfully booked. What a thoughtful gesture! 💝
+              </p>
+            </td>
+          </tr>
+
+          <!-- Booking details -->
+          <tr>
+            <td style="padding:24px 40px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid #DACDC1;">
+                <tr>
+                  <td colspan="2" style="background:#DACDC1;padding:12px 20px;">
+                    <span style="font-size:12px;font-weight:700;letter-spacing:1.5px;color:#543C30;text-transform:uppercase;">Redemption Details</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;width:42%;border-bottom:1px solid #f0e8e0;">Redeemed by</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;font-weight:700;border-bottom:1px solid #f0e8e0;">{{ recipient_name }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;border-bottom:1px solid #f0e8e0;">Service</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;font-weight:700;border-bottom:1px solid #f0e8e0;">{{ service_name }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;border-bottom:1px solid #f0e8e0;">Branch</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;border-bottom:1px solid #f0e8e0;">
+                    📍 <strong>{{ branch_name }}</strong>
+                    {% if branch_location %}<br><span style="font-size:12px;color:#7a6a60;">{{ branch_location }}</span>{% endif %}
+                  </td>
+                </tr>
+                {% if appointment_date %}
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;border-bottom:1px solid #f0e8e0;">Date</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;border-bottom:1px solid #f0e8e0;">📅 {{ appointment_date }}</td>
+                </tr>
+                {% endif %}
+                {% if appointment_time %}
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;{% if booking_reference %}border-bottom:1px solid #f0e8e0;{% endif %}">Time</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;{% if booking_reference %}border-bottom:1px solid #f0e8e0;{% endif %}">
+                    🕐 {{ appointment_time }}{% if appointment_end_time %} – {{ appointment_end_time }}{% endif %}
+                  </td>
+                </tr>
+                {% endif %}
+                {% if booking_reference %}
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;">Booking Ref</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;font-weight:700;">{{ booking_reference }}</td>
+                </tr>
+                {% endif %}
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:28px 40px;text-align:center;">
+              <p style="margin:0 0 6px;font-size:15px;color:#3a2a1e;">
+                Thank you for spreading the USHSPA experience!<br>
+                <strong style="color:#543C30;">The USHSPA Team</strong>
+              </p>
+              <p style="margin:16px 0 0;font-size:11px;color:#a08878;">
+                This is an automated email. Please do not reply.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Bottom bar -->
+          <tr>
+            <td style="background-color:#543C30;padding:14px 40px;text-align:center;">
+              <p style="margin:0;font-size:11px;color:#DACDC1;letter-spacing:1px;">
+                &copy; USHSPA &bull; Luxury Spa &amp; Wellness
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

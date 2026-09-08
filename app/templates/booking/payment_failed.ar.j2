@@ -1,0 +1,10 @@
+مرحباً {{ customer_name | default('') }}،
+
+للأسف، فشلت عملية الدفع للحجز رقم {{ booking_reference }}.
+
+لم يتم تأكيد موعدك في {{ branch_name }} بتاريخ {{ appointment_date }} الساعة {{ appointment_time }}.
+
+يرجى المحاولة مرة أخرى أو التواصل مع فريق الدعم:
+{{ support_phone | default('USHSPA Support') }}
+
+— USHSPA

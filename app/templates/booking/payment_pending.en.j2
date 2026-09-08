@@ -1,0 +1,11 @@
+Hi {{ customer_name | default('there') }},
+
+Your payment for booking {{ booking_reference }} is pending.
+
+Please complete your payment to confirm your appointment at {{ branch_name }}.
+
+Date: {{ appointment_date }}
+Time: {{ appointment_time }}
+
+If you need assistance, contact us at {{ support_phone | default('USHSPA Support') }}.
+— USHSPA

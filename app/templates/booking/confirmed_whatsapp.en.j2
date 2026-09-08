@@ -1,0 +1,18 @@
+✅ *Booking Confirmed* — USHSPA
+
+Dear {{ customer_name | default('Valued Customer') }},
+
+Your booking has been successfully confirmed. Here are your details:
+
+📅 *Date:* {{ appointment_date }}
+🕐 *Time:* {{ appointment_time }}{% if appointment_end_time %}–{{ appointment_end_time }}{% endif %}
+{% if therapist_name %}💆 *Therapist:* {{ therapist_name }}{% endif %}
+{% if service_name %}🧴 *Service:* {{ service_name }}{% endif %}
+{% if branch_name %}📍 *Branch:* {{ branch_name }}{% endif %}
+{% if total_amount %}💳 *Total Paid:* {{ total_amount }} {{ currency | default('KWD') }}{% endif %}
+{% if booking_reference %}🔖 *Ref:* {{ booking_reference }}{% endif %}
+
+We look forward to welcoming you! Please arrive 5 minutes early.
+
+For assistance, contact us at any time.
+— The USHSPA Team

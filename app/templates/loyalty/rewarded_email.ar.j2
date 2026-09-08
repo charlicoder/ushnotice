@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <title>لقد حصلت على مكافأة مجانية!</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f8f9fa; padding: 20px; color: #333; text-align: right;">
+    <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <h2 style="color: #6c5ce7; text-align: center;">🎉 تهانينا {{ customer_name | default('عميلنا العزيز') }}!</h2>
+        <p style="font-size: 16px; line-height: 1.5;">لقد أكملت 5 حجوزات مؤكدة في يوش سبا وحصلت على <strong>خدمة {{ service_name | default('علاج سبا') }} مجاناً</strong>!</p>
+        
+        <div style="background-color: #f1f0fe; padding: 20px; border-radius: 6px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #4b4b4b;">ملخص المكافأة</h3>
+            <p><strong>الخدمة:</strong> {{ service_name | default('خدمة سبا مجانية') }}</p>
+            <p><strong>رقم المكافأة:</strong> {{ reward_id }}</p>
+            <p><strong>تاريخ الانتهاء:</strong> {{ expires_at | default('خلال 10 أيام') }}</p>
+            <p><strong>إجمالي المكافآت المكتسبة:</strong> {{ total_rewards_earned | default(1) }}</p>
+        </div>
+
+        <p style="font-size: 14px; color: #666;">يمكنك استبدال واستخدام هذه المكافأة في حجزك القادم عبر التطبيق أو الموقع الإلكتروني.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="font-size: 12px; color: #999; text-align: center;">شكراً لاختيارك يوش سبا!</p>
+    </div>
+</body>
+</html>

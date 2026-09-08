@@ -1,0 +1,1 @@
+USHSPA: مرحباً {{ customer_name.split()[0] if customer_name else 'عميلنا' }}، تم تأكيد حجزك في {{ appointment_date }} الساعة {{ appointment_time }}. يرجى إتمام الدفع{% if total_amount %} {{ total_amount }} {{ currency | default('KWD') }}{% endif %} لتأمين موعدك: {{ payment_link }}

@@ -1,0 +1,11 @@
+مرحباً {{ customer_name | default('') }}،
+
+دفع حجزك رقم {{ booking_reference }} قيد الانتظار.
+
+يرجى إتمام عملية الدفع لتأكيد موعدك في {{ branch_name }}.
+
+التاريخ: {{ appointment_date }}
+الوقت: {{ appointment_time }}
+
+للمساعدة، تواصل معنا على {{ support_phone | default('USHSPA Support') }}.
+— USHSPA

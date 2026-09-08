@@ -1,0 +1,20 @@
+📋 *Booking Confirmed – Payment Required* — USHSPA
+
+Dear {{ customer_name | default('Valued Customer') }},
+
+Great news! Your booking has been *confirmed*. Please complete your payment to secure your appointment.
+
+📅 *Date:* {{ appointment_date }}
+🕐 *Time:* {{ appointment_time }}{% if appointment_end_time %}–{{ appointment_end_time }}{% endif %}
+{% if therapist_name %}💆 *Therapist:* {{ therapist_name }}
+{% endif %}{% if service_name %}🧴 *Service:* {{ service_name }}
+{% endif %}{% if branch_name %}📍 *Branch:* {{ branch_name }}
+{% endif %}{% if total_amount %}💰 *Amount Due:* {{ total_amount }} {{ currency | default('KWD') }}
+{% endif %}{% if booking_reference %}🔖 *Ref:* {{ booking_reference }}
+{% endif %}
+💳 *Pay Now:* {{ payment_link }}
+
+Your slot is reserved. Please pay before your appointment to avoid cancellation.
+
+For assistance, contact us at any time.
+— The USHSPA Team

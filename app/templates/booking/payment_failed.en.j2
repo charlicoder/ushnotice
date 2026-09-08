@@ -1,0 +1,10 @@
+Hi {{ customer_name | default('there') }},
+
+Unfortunately, your payment for booking {{ booking_reference }} has failed.
+
+Your appointment at {{ branch_name }} on {{ appointment_date }} at {{ appointment_time }} has not been confirmed.
+
+Please try again or contact our support team for assistance:
+{{ support_phone | default('USHSPA Support') }}
+
+— USHSPA

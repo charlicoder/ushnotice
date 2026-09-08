@@ -1,0 +1,20 @@
+📋 *تأكيد الحجز – يلزم الدفع* — USHSPA
+
+عزيزي {{ customer_name | default('عميلنا الكريم') }}،
+
+تهانينا! تم *تأكيد* حجزك. يرجى إتمام الدفع لتأمين موعدك.
+
+📅 *التاريخ:* {{ appointment_date }}
+🕐 *الوقت:* {{ appointment_time }}{% if appointment_end_time %}–{{ appointment_end_time }}{% endif %}
+{% if therapist_name %}💆 *المعالج/ة:* {{ therapist_name }}
+{% endif %}{% if service_name %}🧴 *الخدمة:* {{ service_name }}
+{% endif %}{% if branch_name %}📍 *الفرع:* {{ branch_name }}
+{% endif %}{% if total_amount %}💰 *المبلغ المستحق:* {{ total_amount }} {{ currency | default('KWD') }}
+{% endif %}{% if booking_reference %}🔖 *المرجع:* {{ booking_reference }}
+{% endif %}
+💳 *ادفع الآن:* {{ payment_link }}
+
+موعدك محجوز. يرجى الدفع قبل الموعد لتجنب الإلغاء.
+
+للمساعدة، تواصل معنا في أي وقت.
+— فريق USHSPA

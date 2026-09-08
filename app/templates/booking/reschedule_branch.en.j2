@@ -1,0 +1,13 @@
+Dear {{ branch_name }} Team,
+
+A customer has submitted a rescheduling request for the following booking:
+
+Booking Reference: {{ booking_reference }}
+Customer: {{ customer_name }}
+Service: {{ service_name }}{% if service_arrangement %} — {{ service_arrangement }}{% endif %}
+Original Date: {{ appointment_date }}
+Original Time: {{ appointment_time }}
+
+Please contact the customer at your earliest convenience to arrange the new appointment.
+
+— USHSPA System

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تأكيد الحجز — USHSPA</title>
+</head>
+<body style="margin:0;padding:0;background-color:#DACDC1;font-family:'Helvetica Neue',Arial,sans-serif;color:#3a2a1e;direction:rtl;">
+
+  <!-- Outer wrapper -->
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#DACDC1;padding:32px 16px;">
+    <tr>
+      <td align="center">
+
+        <!-- Card -->
+        <table width="600" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:600px;width:100%;background-color:#E9E2D9;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(84,60,48,0.12);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#543C30;padding:32px 40px;text-align:center;">
+              <!-- Inline SVG logo -->
+              <svg xmlns="http://www.w3.org/2000/svg" width="120" height="44" viewBox="0 0 240 88" aria-label="USHSPA Logo">
+                <rect width="240" height="88" rx="8" fill="#543C30"/>
+                <ellipse cx="120" cy="28" rx="18" ry="8" fill="none" stroke="#E9E2D9" stroke-width="2"/>
+                <ellipse cx="108" cy="35" rx="14" ry="6" fill="none" stroke="#E9E2D9" stroke-width="1.5" transform="rotate(-30 108 35)"/>
+                <ellipse cx="132" cy="35" rx="14" ry="6" fill="none" stroke="#E9E2D9" stroke-width="1.5" transform="rotate(30 132 35)"/>
+                <line x1="120" y1="36" x2="120" y2="48" stroke="#E9E2D9" stroke-width="1.5"/>
+                <text x="120" y="70" text-anchor="middle" font-family="Georgia,serif" font-size="22" letter-spacing="6" fill="#E9E2D9" font-weight="bold">USHSPA</text>
+              </svg>
+              <p style="margin:10px 0 0;color:#DACDC1;font-size:12px;letter-spacing:2px;text-transform:uppercase;">Luxury Spa &amp; Wellness</p>
+            </td>
+          </tr>
+
+          <!-- Hero badge -->
+          <tr>
+            <td style="background-color:#6b4c3b;padding:16px 40px;text-align:center;">
+              <span style="display:inline-block;background:#E9E2D9;color:#543C30;border-radius:50px;padding:8px 28px;font-size:14px;font-weight:700;letter-spacing:1px;">
+                &#10003; &nbsp;تم تأكيد الحجز
+              </span>
+            </td>
+          </tr>
+
+          <!-- Greeting -->
+          <tr>
+            <td style="padding:32px 40px 8px;">
+              <p style="margin:0;font-size:16px;color:#3a2a1e;">
+                عزيزي <strong>{{ customer_name | default('العميل العزيز') }}</strong>،
+              </p>
+              <p style="margin:12px 0 0;font-size:15px;color:#5c4030;line-height:1.8;">
+                شكراً لاختيارك <strong>USHSPA</strong>. تم تأكيد موعدك بنجاح.
+                يسعدنا الترحيب بك وتقديم تجربة استثنائية لك.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Booking details -->
+          <tr>
+            <td style="padding:24px 40px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="background:#fff;border-radius:12px;overflow:hidden;border:1px solid #DACDC1;">
+
+                <!-- Section title -->
+                <tr>
+                  <td colspan="2" style="background:#DACDC1;padding:12px 20px;text-align:right;">
+                    <span style="font-size:12px;font-weight:700;letter-spacing:1px;color:#543C30;text-transform:uppercase;">تفاصيل الموعد</span>
+                  </td>
+                </tr>
+
+                <!-- Booking Ref -->
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;width:42%;border-bottom:1px solid #f0e8e0;text-align:right;">رقم المرجع</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;font-weight:700;border-bottom:1px solid #f0e8e0;text-align:right;">{{ booking_reference }}</td>
+                </tr>
+
+                <!-- Service -->
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;vertical-align:top;border-bottom:1px solid #f0e8e0;text-align:right;">الخدمة</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;vertical-align:top;border-bottom:1px solid #f0e8e0;text-align:right;">
+                    <strong>{{ service_name }}</strong>{% if service_arrangement %} &mdash; {{ service_arrangement }}{% endif %}
+                    {% if service_description %}
+                    <br><span style="font-size:12px;color:#7a6a60;margin-top:4px;display:block;line-height:1.6;">{{ service_description }}</span>
+                    {% endif %}
+                  </td>
+                </tr>
+
+                <!-- Duration -->
+                {% if duration_minutes %}
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;border-bottom:1px solid #f0e8e0;text-align:right;">المدة</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;border-bottom:1px solid #f0e8e0;text-align:right;">{{ duration_minutes }} دقيقة</td>
+                </tr>
+                {% endif %}
+
+                <!-- Date -->
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;border-bottom:1px solid #f0e8e0;text-align:right;">التاريخ</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;border-bottom:1px solid #f0e8e0;text-align:right;">&#128197; &nbsp;{{ appointment_date }}</td>
+                </tr>
+
+                <!-- Time -->
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;border-bottom:1px solid #f0e8e0;text-align:right;">الوقت</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;border-bottom:1px solid #f0e8e0;text-align:right;">
+                    &#128336; &nbsp;{{ appointment_time }}{% if appointment_end_time %} &ndash; {{ appointment_end_time }}{% endif %}
+                  </td>
+                </tr>
+
+                <!-- Therapist -->
+                {% if therapist_name %}
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;border-bottom:1px solid #f0e8e0;text-align:right;">المعالج</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;border-bottom:1px solid #f0e8e0;text-align:right;">&#128134; &nbsp;{{ therapist_name }}</td>
+                </tr>
+                {% endif %}
+
+                <!-- Branch -->
+                <tr>
+                  <td style="padding:14px 20px;font-size:13px;color:#7a5a48;font-weight:600;vertical-align:top;border-bottom:{% if total_amount %}1px solid #f0e8e0{% else %}none{% endif %};text-align:right;">الفرع</td>
+                  <td style="padding:14px 20px;font-size:14px;color:#3a2a1e;vertical-align:top;border-bottom:{% if total_amount %}1px solid #f0e8e0{% else %}none{% endif %};text-align:right;">
+                    &#128205; &nbsp;<strong>{{ branch_name }}</strong>
+                    {% if branch_location %}
+                    <br><span style="font-size:12px;color:#7a6a60;margin-top:3px;display:block;">{{ branch_location }}</span>
+                    {% endif %}
+                    {% if branch_phone %}
+                    <br><span style="font-size:12px;color:#7a6a60;display:block;">&#128222; &nbsp;{{ branch_phone }}</span>
+                    {% endif %}
+                  </td>
+                </tr>
+
+                <!-- Total Payment -->
+                {% if total_amount %}
+                <tr>
+                  <td style="padding:16px 20px;font-size:13px;color:#7a5a48;font-weight:600;text-align:right;">المبلغ المدفوع</td>
+                  <td style="padding:16px 20px;text-align:right;">
+                    <span style="font-size:18px;font-weight:800;color:#543C30;">{{ total_amount }} {{ currency | default('KWD') }}</span>
+                  </td>
+                </tr>
+                {% endif %}
+
+              </table>
+            </td>
+          </tr>
+
+          <!-- Reminder -->
+          <tr>
+            <td style="padding:0 40px 24px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="background:#f7f1eb;border-right:4px solid #543C30;border-radius:8px 0 0 8px;padding:16px 20px;font-size:13px;color:#5c4030;line-height:1.7;text-align:right;">
+                    &#9200; &nbsp;<strong>تذكير:</strong> يُرجى الحضور قبل موعدك بـ <strong>5 إلى 10 دقائق</strong>.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding:0 40px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td style="border-top:1px solid #DACDC1;font-size:0;">&nbsp;</td></tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:28px 40px;text-align:center;">
+              <p style="margin:0 0 6px;font-size:15px;color:#3a2a1e;">
+                مع أطيب التحيات،<br>
+                <strong style="color:#543C30;">فريق USHSPA</strong>
+              </p>
+              {% if branch_phone %}
+              <p style="margin:10px 0 0;font-size:13px;color:#7a6a60;">
+                للاستفسار تواصل معنا: <a href="tel:{{ branch_phone }}" style="color:#543C30;text-decoration:none;font-weight:600;">{{ branch_phone }}</a>
+              </p>
+              {% endif %}
+              <p style="margin:16px 0 0;font-size:11px;color:#a08878;">
+                هذا البريد الإلكتروني تلقائي، يرجى عدم الرد عليه.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Bottom bar -->
+          <tr>
+            <td style="background-color:#543C30;padding:14px 40px;text-align:center;">
+              <p style="margin:0;font-size:11px;color:#DACDC1;letter-spacing:1px;">
+                &copy; USHSPA &bull; Luxury Spa &amp; Wellness
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
