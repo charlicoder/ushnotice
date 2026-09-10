@@ -129,7 +129,7 @@ class TestRecipientMessages:
 
     def test_whatsapp_message_contains_gift_card_url(self):
         msg = _recipient_whatsapp_message(self.ctx)
-        assert "gift.ushspa.com" in msg
+        assert "ushspa.co" in msg
 
     def test_sms_message_contains_secret_code(self):
         msg = _recipient_sms_message(self.ctx)

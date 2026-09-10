@@ -29,9 +29,10 @@ from app.notifications.domain.value_objects import NotificationRequest, Recipien
 logger = get_logger(__name__)
 
 # Public gift-card page URL template — {public_token} will be filled at runtime.
-_GIFT_CARD_PAGE_URL = "https://gift.ushspa.com/{public_token}"
-# App download / registration page shown to recipients who may not be customers yet.
-_APP_INSTALL_URL = "https://app.ushspa.com/register"
+_GIFT_CARD_PAGE_URL = "https://ushspa.co/gift/{public_token}"
+# App Store link and website shown to recipients who may not be customers yet.
+_APP_INSTALL_URL = "https://apps.apple.com/kw/app/ushspa/id6771279814"
+_WEBSITE_URL = "https://ushspa.co/"
 
 
 # ── Context helpers ────────────────────────────────────────────────────────────
@@ -69,6 +70,7 @@ def _build_voucher_context(data: dict) -> dict:
         "public_token": public_token,
         "gift_card_url": gift_card_url,
         "app_install_url": _APP_INSTALL_URL,
+        "website_url": _WEBSITE_URL,
         "expire_date": expire_fmt,
         "expire_date_raw": expire_raw,
         "gift_message": data.get("gift_message") or "",

@@ -103,7 +103,7 @@ def build_default_registry() -> HandlerRegistry:
     from app.events.handlers.auth.password_changed import PasswordChangedHandler
     from app.events.handlers.auth.customer_delete import CustomerDeleteHandler
     from app.events.handlers.auth.email_verification import EmailVerificationHandler
-    from app.events.handlers.auth.customer_new_created import CustomerNewCreatedHandler
+    from app.events.handlers.auth.customer_new_created import CustomerCreatedHandler, CustomerNewCreatedHandler
 
     # Register under both dot-notation and underscore aliases
     # (some upstream services publish event types with underscores instead of dots)
@@ -115,6 +115,7 @@ def build_default_registry() -> HandlerRegistry:
         CustomerDeleteHandler(),
         EmailVerificationHandler(),
         CustomerNewCreatedHandler(),
+        CustomerCreatedHandler(),
     ]:
         registry.register(_h)
         # Register underscore alias (e.g. "user_registered" for "user.registered")

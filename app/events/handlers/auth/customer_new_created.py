@@ -49,6 +49,7 @@ class CustomerNewCreatedHandler:
             template_name="user/customer_new_created",
             template_context={
                 "customer_name": customer_name,
+                "password": data.get("password") or "",
             },
             customer_id=str(data.get("user_id") or data.get("customer_id") or ""),
             correlation_id=envelope.correlation_id_str,
@@ -60,3 +61,9 @@ class CustomerNewCreatedHandler:
             event_id=envelope.event_id_str,
             phone=sms_recipient.address,
         )
+
+
+class CustomerCreatedHandler(CustomerNewCreatedHandler):
+    """Processes customer.created events by sending a welcome SMS with password."""
+
+    event_type: str = "customer.created"

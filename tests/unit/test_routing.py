@@ -54,3 +54,12 @@ async def test_registry_and_router_execution(handler_context: HandlerContext) ->
 
     await router.route(envelope, event_record, handler_context)
     assert handler.invoked is True
+
+
+def test_default_registry_has_customer_created() -> None:
+    from app.events.registry.handler_registry import build_default_registry
+    registry = build_default_registry()
+    assert registry.has_handler("customer.created")
+    assert registry.has_handler("customer_created")
+    assert registry.has_handler("customer.new_created")
+    assert registry.has_handler("customer_new_created")
