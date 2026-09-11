@@ -107,69 +107,121 @@ class UshBookNPayClient:
     async def create_payment(
         self,
         *,
-        booking_id: str,
+        booking_id: str | None = None,
+        voucher_id: str | None = None,
         customer_id: str,
-        amount: str,
+        total_amount: str,
+        total_duration: int = 0,
         currency: str = "KWD",
-        provider: str = "myfatoorah",
+        payment_provider: str = "MyFatoorah",
+        payment_through: str = "ushspa",
+        payment_gateway: str | None = None,
+        payment_for: str = "branch_service",
         payment_method: str = "card",
         status: str = "success",
-        is_paid: bool = True,
         payments_meta: dict | None = None,
+        booking_data: dict | None = None,
+        customer_data: dict | None = None,
+        service_id: str | None = None,
+        service_data: dict | None = None,
+        branch_id: str | None = None,
+        branch_data: dict | None = None,
+        service_arrangement_id: str | None = None,
         correlation_id: str | None = None,
     ) -> dict[str, Any]:
-        """Create a payment record in ushbooknpay from the booking.confirmed event data.
-
-        This is called by BookingConfirmedHandler to persist the payment
-        details that were collected during the mobile payment flow.
+        """Create a payment record in ushbooknpay.
 
         Args:
             booking_id: UUID of the confirmed booking.
-            customer_id: UUID of the customer.
-            amount: Payment amount as a string (e.g. "45.000").
+            voucher_id: UUID of the gift voucher (if applicable).
+            customer_id: UUID of the customer (required).
+            total_amount: Total payment amount (required).
+            total_duration: Service duration in minutes (required).
             currency: Currency code (default "KWD").
-            provider: Payment gateway provider name (default "myfatoorah").
-            payment_method: Payment method used (default "card").
-            status: Payment transaction status (default "success").
-            is_paid: Whether the payment was captured (default True).
-            payments_meta: Full payments_meta dict from the booking event.
+            payment_provider: Provider name — MyFatoorah, DirectLink, Deema, Other.
+            payment_through: Channel — ushspa, desk, other.
+            payment_gateway: Gateway — KNET, TAP, Other.
+            payment_for: Purpose — branch_service, home_service, gift_voucher, product_items.
+            payment_method: Method — card, knet, apple_pay, etc.
+            status: Payment status (default "success").
+            payments_meta: Full payments_meta dict from the event.
+            booking_data: Booking snapshot dict.
+            customer_data: Customer snapshot dict.
+            service_id: Service UUID.
+            service_data: Service snapshot dict.
+            branch_id: Branch UUID.
+            branch_data: Branch snapshot dict.
+            service_arrangement_id: Service arrangement UUID.
             correlation_id: Propagated correlation ID.
         """
         meta = payments_meta or {}
+
+        # Normalise payment_gateway to spec values
+        _gw = str(payment_gateway or meta.get("payment_gateway") or "").upper()
+        if "KNET" in _gw or "K-NET" in _gw:
+            normalised_gw = "KNET"
+        elif "TAP" in _gw:
+            normalised_gw = "TAP"
+        elif _gw:
+            normalised_gw = "Other"
+        else:
+            normalised_gw = None
+
         payload: dict[str, Any] = {
-            "booking_id": booking_id,
+            # ── Required fields ────────────────────────────────────────────
             "customer_id": customer_id,
-            "amount": amount,
+            "total_amount": total_amount,
+            "total_duration": total_duration,
             "currency": currency,
-            "provider": provider,
-            "payment_method": payment_method,
+            # ── Associations ───────────────────────────────────────────────
+            "booking_id": booking_id,
+            "voucher_id": voucher_id,
+            # ── Status & classification ────────────────────────────────────
             "status": status,
-            "is_paid": is_paid,
-            # Standard unified gateway fields from payments_meta
+            "payment_for": payment_for,
+            "payment_provider": payment_provider,
+            "payment_through": payment_through,
+            "payment_gateway": normalised_gw,
+            "payment_method": payment_method,
+            # ── Invoice & transaction identifiers ──────────────────────────
             "payment_id": meta.get("payment_id") or meta.get("transaction_id"),
             "transaction_id": meta.get("transaction_id"),
             "invoice_id": meta.get("invoice_id"),
-            "invoice_value": meta.get("invoice_value") or amount,
-            "invoice_reference": meta.get("invoice_reference"),
-            "customer_reference": meta.get("customer_reference"),
+            "invoice_value": meta.get("invoice_value") or total_amount,
             "reference_id": meta.get("reference_id"),
             "track_id": meta.get("track_id"),
-            "authorization_id": meta.get("authorization_id"),
-            "payment_gateway": meta.get("payment_gateway"),
-            "customer_name": meta.get("customer_name"),
-            "customer_mobile": meta.get("customer_mobile"),
-            "customer_email": meta.get("customer_email"),
-            "created_date": meta.get("created_date"),
+            "transaction_status": meta.get("transaction_status"),
             "transaction_date": meta.get("transaction_date"),
-            "vat_amount": meta.get("vat_amount"),
             "payment_url": meta.get("payment_url"),
-            "idempotency_key": f"booking-confirmed-{booking_id}",
+            # ── Service & location ─────────────────────────────────────────
+            "service_id": service_id,
+            "service_data": service_data,
+            "branch_id": branch_id,
+            "branch_data": branch_data,
+            "service_arrangement_id": service_arrangement_id,
+            # ── Snapshots ──────────────────────────────────────────────────
+            "booking_data": booking_data,
+            "customer_data": customer_data or {
+                "name": meta.get("customer_name"),
+                "mobile": meta.get("customer_mobile") or meta.get("customer_phone"),
+                "email": meta.get("customer_email"),
+            },
+            # ── Raw gateway identifiers → payment_data JSONB ───────────────
+            "payment_data": {k: v for k, v in {
+                "invoice_reference": meta.get("invoice_reference"),
+                "customer_reference": meta.get("customer_reference"),
+                "authorization_id": meta.get("authorization_id"),
+                "vat_amount": meta.get("vat_amount"),
+                "created_date": meta.get("created_date"),
+                "raw_payments_meta": meta,
+            }.items() if v is not None},
         }
         return await self._client.post(
             "/api/v1/payments/",
             json=payload,
             correlation_id=correlation_id,
         )
+
 
     async def record_loyalty_tracker(
         self,

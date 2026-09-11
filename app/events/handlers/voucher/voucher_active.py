@@ -48,8 +48,9 @@ def _fmt_expire(expire_date: str) -> str:
 
 def _build_voucher_context(data: dict) -> dict:
     """Extract and normalise all gift-voucher fields for template rendering."""
-    sender_details: dict = data.get("sender_details") or {}
-    recipient_details: dict = data.get("recipient_details") or {}
+    sender_details: dict = data.get("sender_details") or data.get("sender_data") or {}
+    recipient_details: dict = data.get("recipient_details") or data.get("recipient_data") or {}
+
     service_data: dict = data.get("service_data") or {}
     branch_data: dict = data.get("branch_data") or {}
 
@@ -270,9 +271,9 @@ class VoucherActiveHandler:
         try:
             client = UshBookNPayClient()
             payment_data: dict = data.get("payment_data") or {}
-            sender_details: dict = data.get("sender_details") or {}
+            sender_details: dict = data.get("sender_details") or data.get("sender_data") or {}
 
-            # Derive gateway-level fields from payment_data (MyFatoorah / KNET response)
+            # ── Derive gateway-level fields from payment_data ──────────────
             payment_id: str = str(data.get("payment_id") or payment_data.get("invoiceId") or "")
             invoice_id: str = str(payment_data.get("invoiceId") or payment_data.get("InvoiceId") or "")
             invoice_value: Any = (
@@ -283,53 +284,145 @@ class VoucherActiveHandler:
             )
             payment_url: str = str(data.get("payment_url") or "")
 
-            # sender_id is the registered customer UUID who purchased this gift voucher
+            # sender_id is the registered customer UUID who purchased the voucher
             sender_id: str = str(data.get("sender_id") or "")
 
+            # ── Normalise payment_gateway to spec values ───────────────────
+            _gw_raw = str(payment_data.get("paymentGateway") or payment_data.get("PaymentGateway") or "").upper()
+            if "KNET" in _gw_raw or "K-NET" in _gw_raw:
+                normalised_gw = "KNET"
+            elif "TAP" in _gw_raw:
+                normalised_gw = "TAP"
+            elif _gw_raw:
+                normalised_gw = "Other"
+            else:
+                normalised_gw = None
+
+            # ── Service / location fields ──────────────────────────────────
+            service_id: str | None = str(data.get("service_id") or "") or None
+            service_data: dict | None = data.get("service_data") or None
+            branch_id: str | None = str(data.get("branch_id") or "") or None
+            branch_data: dict | None = data.get("branch_data") or None
+            service_arrangement_id: str | None = str(data.get("service_arrangement_id") or "") or None
+            service_arrangement_data: dict | None = data.get("service_arrangement_data") or None
+
+            # ── Addons & pricing breakdown ─────────────────────────────────
+            addons: list = data.get("addons") or []
+            # Sum the "price" field from each addon dict (gracefully handle missing/non-numeric)
+            addons_price_total: float = 0.0
+            for addon in addons:
+                try:
+                    addons_price_total += float(addon.get("price") or 0)
+                except (TypeError, ValueError):
+                    pass
+            addons_price: str | None = (
+                f"{addons_price_total:.3f}" if addons_price_total > 0 else None
+            )
+
+            extra_time: int | None = data.get("extra_time") or None
+            price_for_extra_time: str | None = data.get("price_for_extra_time") or None
+
+            # ── Recipient fields ───────────────────────────────────────────
+            recipient_id: str | None = str(data.get("recipient_id") or "") or None
+            recipient_phone: str | None = (
+                data.get("recipient_phone")
+                or (data.get("recipient_data") or {}).get("phone_number")
+                or vctx.get("recipient_phone")
+                or None
+            )
+            recipient_data: dict | None = data.get("recipient_data") or None
+
+            # ── Creator ────────────────────────────────────────────────────
+            created_by: str | None = str(data.get("created_by") or "") or None
+
             payload: dict[str, Any] = {
-                # Use voucher_id as the id of this payment record
-                "id": voucher_id,
-                # Payment context — no booking, this is a voucher purchase
+                # ── Required fields ────────────────────────────────────────
+                "customer_id": sender_id or None,
+                "total_amount": str(vctx["total_amount"] or invoice_value or "0"),
+                "total_duration": int(vctx.get("total_duration") or 0),
+                "currency": vctx["currency"],
+                # ── Associations ───────────────────────────────────────────
                 "voucher_id": voucher_id,
                 "booking_id": None,
-                # customer_id is required by the payments endpoint when called with an app token.
-                # For gift voucher purchases, the sender is the customer.
-                "customer_id": sender_id or None,
-                # Financial fields
-                "amount": vctx["total_amount"] or invoice_value,
-                "currency": vctx["currency"],
-                "provider": "myfatoorah",
-                "payment_method": str(payment_data.get("paymentMethod") or payment_data.get("PaymentMethod") or "card"),
+                # ── Status & classification ────────────────────────────────
                 "status": "success",
-                "is_paid": True,
-                # Gateway identifiers
+                "payment_for": "gift_voucher",
+                "payment_provider": str(data.get("payment_provider") or "MyFatoorah"),
+                "payment_through": str(data.get("payment_through") or "ushspa"),
+                "payment_gateway": normalised_gw,
+                "payment_method": str(
+                    payment_data.get("paymentMethod")
+                    or payment_data.get("PaymentMethod")
+                    or "card"
+                ),
+                # ── Invoice & transaction identifiers ──────────────────────
                 "payment_id": payment_id,
-                "transaction_id": str(payment_data.get("transactionId") or payment_data.get("TransactionId") or payment_id),
+                "transaction_id": str(
+                    payment_data.get("transactionId")
+                    or payment_data.get("TransactionId")
+                    or payment_id
+                ),
                 "invoice_id": invoice_id,
                 "invoice_value": str(invoice_value),
-                "invoice_reference": str(payment_data.get("invoiceReference") or payment_data.get("InvoiceReference") or ""),
-                "customer_reference": str(payment_data.get("customerReference") or payment_data.get("CustomerReference") or ""),
-                "payment_gateway": str(payment_data.get("paymentGateway") or payment_data.get("PaymentGateway") or "myfatoorah"),
                 "payment_url": payment_url,
-                # Customer snapshot from sender_details
-                "customer_name": sender_details.get("name") or "",
-                "customer_mobile": sender_details.get("phone_number") or "",
-                "customer_email": sender_details.get("email") or "",
-                # Full gateway response snapshot
-                "payment_data": payment_data or None,
-                # Voucher-level snapshot
+                # ── Service & location ─────────────────────────────────────
+                "service_id": service_id,
+                "service_data": service_data,
+                "branch_id": branch_id,
+                "branch_data": branch_data,
+                "service_arrangement_id": service_arrangement_id,
+                "service_arrangement_data": service_arrangement_data,
+                # ── Pricing breakdown ──────────────────────────────────────
+                "addons": addons or None,
+                "addons_price": addons_price,
+                "extra_time": extra_time,
+                "price_for_extra_time": price_for_extra_time,
+                # ── Recipient ──────────────────────────────────────────────
+                "recipient_id": recipient_id,
+                "recipient_phone": recipient_phone,
+                "recipient_data": recipient_data,
+                # ── Sender as customer snapshot ────────────────────────────
+                "sender_id": sender_id or None,
+                "sender_data": sender_details or None,
+                "customer_data": {
+                    "name": sender_details.get("name") or "",
+                    "mobile": (
+                        sender_details.get("phone_number")
+                        or sender_details.get("mobile")
+                        or ""
+                    ),
+                    "email": sender_details.get("email") or "",
+                },
+                # ── Audit ──────────────────────────────────────────────────
+                "created_by": created_by,
+                # ── Voucher data snapshot ──────────────────────────────────
                 "voucher_data": {
                     "voucher_id": voucher_id,
-                    "service_id": str(data.get("service_id") or ""),
+                    "service_id": service_id or "",
                     "service_name": vctx["service_name"],
-                    "branch_id": str(data.get("branch_id") or ""),
+                    "branch_id": branch_id or "",
                     "branch_name": vctx["branch_name"],
                     "expire_date": vctx["expire_date_raw"],
                     "total_amount": vctx["total_amount"],
                     "total_duration": vctx["total_duration"],
-                    "recipient_phone": vctx["recipient_phone"],
+                    "recipient_phone": recipient_phone or vctx.get("recipient_phone") or "",
+                    "addons_price": addons_price,
+                    "price_for_extra_time": price_for_extra_time,
                 },
-                "idempotency_key": f"voucher-active-{voucher_id}",
+                # ── Raw gateway data → payment_data JSONB ──────────────────
+                "payment_data": {k: v for k, v in {
+                    "invoice_reference": str(
+                        payment_data.get("invoiceReference")
+                        or payment_data.get("InvoiceReference")
+                        or ""
+                    ),
+                    "customer_reference": str(
+                        payment_data.get("customerReference")
+                        or payment_data.get("CustomerReference")
+                        or ""
+                    ),
+                    "raw_gateway_response": payment_data or None,
+                }.items() if v},
             }
 
             await client._client.post(
@@ -342,7 +435,10 @@ class VoucherActiveHandler:
                 "voucher_active_payment_record_created",
                 voucher_id=voucher_id,
                 payment_id=payment_id,
-                amount=vctx["total_amount"],
+                total_amount=vctx["total_amount"],
+                addons_price=addons_price,
+                price_for_extra_time=price_for_extra_time,
+                service_id=service_id,
             )
         except Exception as exc:
             # Non-blocking — payment record failure must never prevent notifications
@@ -351,6 +447,7 @@ class VoucherActiveHandler:
                 voucher_id=voucher_id,
                 error=str(exc),
             )
+
 
     async def _notify_sender(
         self,

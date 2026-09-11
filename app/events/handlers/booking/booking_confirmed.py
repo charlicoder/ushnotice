@@ -425,48 +425,91 @@ class BookingConfirmedHandler:
                     payments_meta.get("payment_gateway") or "myfatoorah"
                 )
                 meta = payments_meta or {}
+
+                # Resolve total_duration from event data (required by new payment model)
+                total_duration: int = int(
+                    data.get("total_duration")
+                    or data.get("duration_minutes")
+                    or data.get("duration")
+                    or pricing.get("duration_minutes")
+                    or 0
+                )
+
+                # Normalise payment_provider to new enum values
+                _raw_provider = str(meta.get("provider") or meta.get("payment_provider") or "myfatoorah").lower()
+                if "fatoorah" in _raw_provider:
+                    payment_provider = "MyFatoorah"
+                elif "directlink" in _raw_provider or "direct" in _raw_provider:
+                    payment_provider = "DirectLink"
+                elif "deema" in _raw_provider:
+                    payment_provider = "Deema"
+                else:
+                    payment_provider = "MyFatoorah"
+
+                # Normalise payment_for based on booking type
+                if booking_type == "home":
+                    payment_for = "home_service"
+                else:
+                    payment_for = "branch_service"
+
+                # Normalise payment_gateway to spec values: KNET | TAP | Other
+                _gw_raw = str(meta.get("payment_gateway") or payment_gateway or "").upper()
+                if "KNET" in _gw_raw or "K-NET" in _gw_raw:
+                    normalised_gateway = "KNET"
+                elif "TAP" in _gw_raw:
+                    normalised_gateway = "TAP"
+                elif _gw_raw:
+                    normalised_gateway = "Other"
+                else:
+                    normalised_gateway = None
+
+                # Build payload matching the new ushbooknpay Payment model spec
                 payload: dict[str, Any] = {
-                    "booking_id": booking_id,
+                    # ── Required fields ────────────────────────────────────
                     "customer_id": customer_id,
-                    "amount": total_amount,
+                    "total_amount": total_amount,
+                    "total_duration": total_duration,
                     "currency": currency,
-                    "provider": "myfatoorah",
-                    "payment_method": payment_gateway,
+                    # ── Associations ───────────────────────────────────────
+                    "booking_id": booking_id,
+                    # ── Status ─────────────────────────────────────────────
                     "status": "success",
-                    "is_paid": True,
-                    # ── Standard gateway fields ────────────────────────────
+                    "payment_for": payment_for,
+                    # ── Classification ─────────────────────────────────────
+                    "payment_provider": payment_provider,
+                    "payment_through": "ushspa",
+                    "payment_gateway": normalised_gateway,
+                    "payment_method": (
+                        "knet" if normalised_gateway == "KNET"
+                        else "card"
+                    ),
+                    # ── Invoice & Transaction identifiers ──────────────────
                     "payment_id": meta.get("payment_id") or meta.get("transaction_id"),
                     "transaction_id": meta.get("transaction_id"),
                     "invoice_id": meta.get("invoice_id"),
                     "invoice_value": meta.get("invoice_value") or total_amount,
-                    "invoice_reference": meta.get("invoice_reference"),
-                    "customer_reference": meta.get("customer_reference"),
                     "reference_id": meta.get("reference_id"),
                     "track_id": meta.get("track_id"),
-                    "authorization_id": meta.get("authorization_id"),
-                    "payment_gateway": meta.get("payment_gateway") or payment_gateway,
-                    "gateway_name": meta.get("payment_gateway") or payment_gateway,
-                    # ── Customer snapshot from event + payments_meta ───────
-                    "customer_name": (
-                        meta.get("customer_name")
-                        or customer_name
-                        or data.get("customer_name")
-                    ),
-                    "customer_mobile": (
-                        meta.get("customer_mobile")
-                        or meta.get("customer_phone")
-                        or data.get("customer_phone")
-                        or data.get("customer_mobile")
-                    ),
-                    "customer_email": (
-                        meta.get("customer_email")
-                        or data.get("customer_email")
-                    ),
-                    "created_date": meta.get("created_date"),
+                    "transaction_status": meta.get("transaction_status"),
                     "transaction_date": meta.get("transaction_date"),
-                    "vat_amount": meta.get("vat_amount"),
                     "payment_url": meta.get("payment_url"),
-                    # ── Booking snapshot ───────────────────────────────────
+                    # ── Service & location ─────────────────────────────────
+                    "service_id": str(data.get("service_id") or "") or None,
+                    "service_data": data.get("service_data") or {
+                        "name": str(data.get("service_name") or ""),
+                    },
+                    "branch_id": str(data.get("branch_id") or "") or None,
+                    "branch_data": data.get("branch_data") or {
+                        "name": str(data.get("branch_name") or ""),
+                    },
+                    "service_arrangement_id": str(data.get("service_arrangement_id") or "") or None,
+                    "service_arrangement_data": data.get("service_arrangement_data") or None,
+                    # ── Pricing breakdown ──────────────────────────────────
+                    "addons": data.get("addons") or None,
+                    "addons_price": str(data.get("addon_price") or pricing.get("addon_price") or "") or None,
+                    "extra_time": data.get("extra_minutes") or data.get("extra_time") or None,
+                    "price_for_extra_time": str(data.get("price_for_extra_minutes") or "") or None,
+                    # ── Booking data snapshot ──────────────────────────────
                     "booking_data": {
                         "booking_id": booking_id,
                         "service_id": str(data.get("service_id") or ""),
@@ -475,23 +518,39 @@ class BookingConfirmedHandler:
                         "branch_name": str(data.get("branch_name") or ""),
                         "appointment_start": str(data.get("appointment_start") or ""),
                         "appointment_end": str(data.get("appointment_end") or ""),
-                        "duration_minutes": data.get("duration_minutes") or data.get("duration"),
+                        "duration_minutes": total_duration,
                         "booking_type": booking_type,
                         "currency": currency,
                         "total_amount": total_amount,
                     },
                     # ── Customer data snapshot ─────────────────────────────
                     "customer_data": {
-                        "name": meta.get("customer_name") or customer_name,
+                        "name": customer_name or meta.get("customer_name") or data.get("customer_name"),
                         "mobile": (
+                            meta.get("customer_mobile")
+                            or meta.get("customer_phone")
+                            or data.get("customer_phone")
+                            or data.get("customer_mobile")
+                        ),
+                        "phone_number": (
                             meta.get("customer_mobile")
                             or meta.get("customer_phone")
                             or data.get("customer_phone")
                         ),
                         "email": meta.get("customer_email") or data.get("customer_email"),
                     },
-                    "idempotency_key": f"booking-confirmed-{booking_id}",
+                    # ── Raw gateway identifiers → payment_data JSONB ───────
+                    "payment_data": {k: v for k, v in {
+                        "invoice_reference": meta.get("invoice_reference"),
+                        "customer_reference": meta.get("customer_reference"),
+                        "authorization_id": meta.get("authorization_id"),
+                        "gateway_name": meta.get("payment_gateway") or payment_gateway,
+                        "vat_amount": meta.get("vat_amount"),
+                        "created_date": meta.get("created_date"),
+                        "raw_payments_meta": meta,
+                    }.items() if v is not None},
                 }
+
                 await booknpay_client._client.post(
                     "/api/v1/payments/",
                     json=payload,
@@ -502,7 +561,9 @@ class BookingConfirmedHandler:
                     "booking_confirmed_payment_record_created",
                     booking_id=booking_id,
                     customer_id=customer_id,
-                    amount=total_amount,
+                    total_amount=total_amount,
+                    total_duration=total_duration,
+                    payment_provider=payment_provider,
                 )
             except Exception as exc:
                 # Non-blocking — notification flow must not fail due to payment record errors
