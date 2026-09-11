@@ -3,7 +3,7 @@ Handler for `booking.confirmed` event.
 
 On a confirmed booking this handler:
   1. Creates an appointment-cache record in ushauth (to mark the slot as confirmed).
-  2. Creates a payment record in ushbooknpay (from the payments_meta in the event).
+  2. Creates a payment record in ushbooknpay (from the payment_data in the event).
   3. Creates / increments a loyalty tracker in ushbooknpay for branch bookings.
   4. Sends notifications to the customer:
        • If payment_status == 'pending':
@@ -41,22 +41,22 @@ def _resolve_payment_link(data: dict) -> str:
 
     Priority:
       1. ``data['payment_link']``          — explicit field from event
-      2. ``payments_meta['payment_url']``  — gateway-generated URL
-      3. ``payments_meta['payment_link']`` — alternate key
+      2. ``payment_data['payment_url']``  — gateway-generated URL
+      3. ``payment_data['payment_link']`` — alternate key
       4. Demo link                         — placeholder until real link is available
     """
-    payments_meta: dict = data.get("payments_meta") or {}
+    payment_data: dict = data.get("payment_data") or {}
     return (
         data.get("payment_link")
-        or payments_meta.get("payment_url")
-        or payments_meta.get("payment_link")
+        or payment_data.get("payment_url")
+        or payment_data.get("payment_link")
         or _DEMO_PAYMENT_LINK
     )
 
 
 def _build_booking_context(data: dict) -> dict:
     """Extract and normalise booking fields for template rendering."""
-    payments_meta = data.get("payments_meta") or {}
+    payment_data = data.get("payment_data") or {}
     appointment_date = (
         data.get("appointment_date")
         or data.get("date")
@@ -73,15 +73,15 @@ def _build_booking_context(data: dict) -> dict:
     booking_reference = (
         data.get("booking_reference")
         or data.get("reference")
-        or payments_meta.get("invoice_reference")
-        or payments_meta.get("invoice_id")
+        or payment_data.get("invoice_reference")
+        or payment_data.get("invoice_id")
         or data.get("booking_id")
         or ""
     )
     total_amount = (
         data.get("total_amount")
         or data.get("amount")
-        or payments_meta.get("invoice_value")
+        or payment_data.get("invoice_value")
         or ""
     )
 
@@ -137,7 +137,7 @@ def _build_booking_context(data: dict) -> dict:
         "therapist_name": data.get("therapist_name") or "",
         "total_amount": total_amount,
         "currency": data.get("currency") or "KWD",
-        "payments_meta": payments_meta,
+        "payment_data": payment_data,
     }
 
 
@@ -299,9 +299,17 @@ class BookingConfirmedHandler:
         booking_id = str(data.get("booking_id") or "")
         customer_name = str(data.get("customer_name") or "")
         correlation_id = envelope.correlation_id_str
-        payments_meta: dict = data.get("payments_meta") or {}
+        payment_data: dict = data.get("payment_data") or {}
         booking_type: str = str(data.get("booking_type") or "branch")
-        is_paid: bool = bool(payments_meta.get("is_paid") is True or payments_meta.get("is_paid") == "true")
+        # Payment record should be created when:
+        #   a) payment_data.is_paid == True  (explicit flag from gateway callback), OR
+        #   b) event-level payment_status == "success" (booking created with status=confirmed+payment_status=success)
+        _event_payment_status: str = str(data.get("payment_status") or "").lower()
+        is_paid: bool = (
+            payment_data.get("is_paid") is True
+            or payment_data.get("is_paid") == "true"
+            or _event_payment_status == "success"
+        )
 
         # Detect pending-payment scenario: booking confirmed but customer hasn't paid yet
         payment_status: str = str(data.get("payment_status") or "").lower()
@@ -412,7 +420,7 @@ class BookingConfirmedHandler:
                 booknpay_client = UshBookNPayClient()
                 pricing: dict = data.get("pricing") or {}
                 total_amount: str = (
-                    str(payments_meta.get("invoice_value") or "")
+                    str(payment_data.get("invoice_value") or "")
                     or str(data.get("total_amount") or "")
                     or str(pricing.get("total") or "0")
                 )
@@ -422,9 +430,9 @@ class BookingConfirmedHandler:
                     or "KWD"
                 )
                 payment_gateway: str = str(
-                    payments_meta.get("payment_gateway") or "myfatoorah"
+                    payment_data.get("payment_gateway") or "myfatoorah"
                 )
-                meta = payments_meta or {}
+                meta = payment_data or {}
 
                 # Resolve total_duration from event data (required by new payment model)
                 total_duration: int = int(
@@ -447,7 +455,7 @@ class BookingConfirmedHandler:
                     payment_provider = "MyFatoorah"
 
                 # Normalise payment_for based on booking type
-                if booking_type == "home":
+                if booking_type in ("home_service", "home"):
                     payment_for = "home_service"
                 else:
                     payment_for = "branch_service"
@@ -479,19 +487,60 @@ class BookingConfirmedHandler:
                     "payment_provider": payment_provider,
                     "payment_through": "ushspa",
                     "payment_gateway": normalised_gateway,
+                    # payment_method: prefer explicit value from payment_data over gateway-inferred default
                     "payment_method": (
-                        "knet" if normalised_gateway == "KNET"
-                        else "card"
+                        str(
+                            meta.get("payment_method")
+                            or meta.get("paymentMethod")
+                            or meta.get("PaymentMethod")
+                            or ("knet" if normalised_gateway == "KNET" else "card")
+                        )
                     ),
                     # ── Invoice & Transaction identifiers ──────────────────
-                    "payment_id": meta.get("payment_id") or meta.get("transaction_id"),
-                    "transaction_id": meta.get("transaction_id"),
-                    "invoice_id": meta.get("invoice_id"),
+                    # Check snake_case (actual event format) then camelCase (MyFatoorah) for each field
+                    "payment_id": (
+                        meta.get("payment_id")
+                        or meta.get("transaction_id")
+                        or meta.get("transactionId")
+                        or meta.get("TransactionId")
+                        or meta.get("invoice_id")
+                        or meta.get("invoiceId")
+                        or meta.get("InvoiceId")
+                    ),
+                    "transaction_id": (
+                        meta.get("transaction_id")
+                        or meta.get("transactionId")
+                        or meta.get("TransactionId")
+                    ),
+                    "invoice_id": (
+                        meta.get("invoice_id")
+                        or meta.get("invoiceId")
+                        or meta.get("InvoiceId")
+                    ),
                     "invoice_value": meta.get("invoice_value") or total_amount,
-                    "reference_id": meta.get("reference_id"),
-                    "track_id": meta.get("track_id"),
-                    "transaction_status": meta.get("transaction_status"),
-                    "transaction_date": meta.get("transaction_date"),
+                    "reference_id": (
+                        meta.get("reference_id")
+                        or meta.get("referenceId")
+                        or meta.get("ReferenceId")
+                    ),
+                    "track_id": (
+                        meta.get("trace_id")         # snake_case alias used in actual payloads
+                        or meta.get("track_id")
+                        or meta.get("trackId")
+                        or meta.get("TrackId")
+                    ),
+                    # Normalize transaction_status: "Paid" / "paid" / "Succss" (sic) → "success"
+                    "transaction_status": (
+                        "success"
+                        if str(meta.get("transaction_status") or meta.get("status") or "").lower()
+                           in ("paid", "success", "succss")
+                        else str(meta.get("transaction_status") or "") or None
+                    ),
+                    "transaction_date": (
+                        meta.get("transaction_date")
+                        or meta.get("transactionDate")
+                        or meta.get("TransactionDate")
+                    ),
                     "payment_url": meta.get("payment_url"),
                     # ── Service & location ─────────────────────────────────
                     "service_id": str(data.get("service_id") or "") or None,
@@ -547,7 +596,7 @@ class BookingConfirmedHandler:
                         "gateway_name": meta.get("payment_gateway") or payment_gateway,
                         "vat_amount": meta.get("vat_amount"),
                         "created_date": meta.get("created_date"),
-                        "raw_payments_meta": meta,
+                        "raw_payment_data": meta,
                     }.items() if v is not None},
                 }
 
@@ -576,7 +625,7 @@ class BookingConfirmedHandler:
         # ── 3. Create / increment loyalty tracker in ushbooknpay ─────────────
         # Only for branch bookings (not home service) on loyalty-eligible services
         is_eligible_for_loyalty: bool = bool(data.get("is_eligible_for_loyalty"))
-        if booking_id and booking_type == "branch" and customer_id and data.get("service_id") and is_eligible_for_loyalty:
+        if booking_id and booking_type in ("branch_service", "branch") and customer_id and data.get("service_id") and is_eligible_for_loyalty:
             try:
                 loyalty_client = UshBookNPayClient()
                 service_data_dict: dict = data.get("service_data") or {}
@@ -608,7 +657,7 @@ class BookingConfirmedHandler:
                     booking_id=booking_id,
                     error=str(exc),
                 )
-        elif booking_id and booking_type == "branch" and not is_eligible_for_loyalty:
+        elif booking_id and booking_type in ("branch_service", "branch") and not is_eligible_for_loyalty:
             logger.info(
                 "loyalty_skipped_not_eligible",
                 booking_id=booking_id,

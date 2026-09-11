@@ -274,8 +274,8 @@ class VoucherActiveHandler:
             sender_details: dict = data.get("sender_details") or data.get("sender_data") or {}
 
             # ── Derive gateway-level fields from payment_data ──────────────
-            payment_id: str = str(data.get("payment_id") or payment_data.get("invoiceId") or "")
-            invoice_id: str = str(payment_data.get("invoiceId") or payment_data.get("InvoiceId") or "")
+            payment_id: str = str(data.get("payment_id") or payment_data.get("invoiceId") or payment_data.get("invoice_id") or "")
+            invoice_id: str = str(payment_data.get("invoice_id") or payment_data.get("invoiceId") or payment_data.get("InvoiceId") or "")
             invoice_value: Any = (
                 vctx["total_amount"]
                 or payment_data.get("invoiceValue")
@@ -362,7 +362,30 @@ class VoucherActiveHandler:
                     or payment_data.get("TransactionId")
                     or payment_id
                 ),
-                "invoice_id": invoice_id,
+                "track_id": str(
+                    payment_data.get("trace_id")      # snake_case (actual format)
+                    or payment_data.get("trackId")    # camelCase (MyFatoorah)
+                    or payment_data.get("TrackId")
+                    or ""
+                ) or None,
+                "invoice_id": invoice_id or None,
+                "reference_id": str(
+                    payment_data.get("reference_id")  # snake_case (actual format)
+                    or payment_data.get("referenceId")
+                    or payment_data.get("ReferenceId")
+                    or ""
+                ) or None,
+                "transaction_date": str(
+                    payment_data.get("transaction_date")   # snake_case (actual format)
+                    or payment_data.get("transactionDate")
+                    or payment_data.get("TransactionDate")
+                    or ""
+                ) or None,
+                "transaction_status": (
+                    "success"
+                    if str(payment_data.get("status", "")).lower() in ("paid", "success")
+                    else str(payment_data.get("status") or "") or None
+                ),
                 "invoice_value": str(invoice_value),
                 "payment_url": payment_url,
                 # ── Service & location ─────────────────────────────────────

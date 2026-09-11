@@ -63,12 +63,12 @@ CONFIRMED_BOOKING_DATA = {
     "customer_phone": "+96541028983",
     "total_amount": "45.000",
     "currency": "KWD",
-    "booking_type": "branch",
+    "booking_type": "branch_service",
     "whatsapp_verified": True,
     "appointment_date": "2026-08-26",
     "appointment_starttime": "12:30",
     "appointment_endtime": "13:30",
-    "payments_meta": PAID_PAYMENTS_META,
+    "payment_data": PAID_PAYMENTS_META,
 }
 
 
@@ -146,7 +146,7 @@ async def test_booking_confirmed_handler_no_payment_when_not_paid():
     handler = BookingConfirmedHandler()
     data = {
         **CONFIRMED_BOOKING_DATA,
-        "payments_meta": {
+        "payment_data": {
             "status": "Pending",
             "is_paid": False,
             "invoice_id": "7106600",
@@ -289,7 +289,7 @@ async def test_booking_confirmed_pending_payment_sends_payment_link_notification
     data = {
         **CONFIRMED_BOOKING_DATA,
         "payment_status": "pending",
-        "payments_meta": {
+        "payment_data": {
             "status": "Pending",
             "is_paid": False,
             "invoice_id": "7106601",
@@ -353,7 +353,7 @@ async def test_booking_confirmed_pending_payment_uses_event_payment_link():
         **CONFIRMED_BOOKING_DATA,
         "payment_status": "pending",
         "payment_link": REAL_PAYMENT_LINK,
-        "payments_meta": {
+        "payment_data": {
             "status": "Pending",
             "is_paid": False,
             "invoice_id": "7106602",

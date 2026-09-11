@@ -109,7 +109,7 @@ class UshAuthClient:
         booking_id: str,
         appointment_date: str,
         appointment_time: str,
-        booking_type: str = "branch",
+        booking_type: str = "branch_service",
         duration: int = 60,
         status: str = "confirmed",
         customer_id: str | None = None,

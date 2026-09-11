@@ -5,7 +5,7 @@ All calls go through the API Gateway at ``/booknpay``.
 ushbooknpay remains the source of truth for all booking and payment state.
 
 Payment records are created by this service on booking.confirmed events,
-using the payments_meta data from the SQS event payload.
+using the payment_data data from the SQS event payload.
 """
 from __future__ import annotations
 
@@ -119,7 +119,7 @@ class UshBookNPayClient:
         payment_for: str = "branch_service",
         payment_method: str = "card",
         status: str = "success",
-        payments_meta: dict | None = None,
+        payment_data: dict | None = None,
         booking_data: dict | None = None,
         customer_data: dict | None = None,
         service_id: str | None = None,
@@ -144,7 +144,7 @@ class UshBookNPayClient:
             payment_for: Purpose — branch_service, home_service, gift_voucher, product_items.
             payment_method: Method — card, knet, apple_pay, etc.
             status: Payment status (default "success").
-            payments_meta: Full payments_meta dict from the event.
+            payment_data: Full payment_data dict from the event.
             booking_data: Booking snapshot dict.
             customer_data: Customer snapshot dict.
             service_id: Service UUID.
@@ -154,7 +154,7 @@ class UshBookNPayClient:
             service_arrangement_id: Service arrangement UUID.
             correlation_id: Propagated correlation ID.
         """
-        meta = payments_meta or {}
+        meta = payment_data or {}
 
         # Normalise payment_gateway to spec values
         _gw = str(payment_gateway or meta.get("payment_gateway") or "").upper()
@@ -213,7 +213,7 @@ class UshBookNPayClient:
                 "authorization_id": meta.get("authorization_id"),
                 "vat_amount": meta.get("vat_amount"),
                 "created_date": meta.get("created_date"),
-                "raw_payments_meta": meta,
+                "raw_payment_data": meta,
             }.items() if v is not None},
         }
         return await self._client.post(
@@ -230,7 +230,7 @@ class UshBookNPayClient:
         service_id: str,
         booking_id: str,
         service_arrangement_id: str | None = None,
-        booking_type: str = "branch",
+        booking_type: str = "branch_service",
         customer_name: str = "",
         customer_email: str = "",
         customer_phone: str = "",
