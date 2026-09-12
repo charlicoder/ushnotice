@@ -414,8 +414,13 @@ class BookingConfirmedHandler:
                 )
 
         # ── 2. Create payment record in ushbooknpay ──────────────────────────
-        # Only create a payment record when the booking was actually paid
-        if booking_id and is_paid:
+        # Only create a payment record when the booking was actually paid AND
+        # it is NOT a gift-voucher booking.  For gift_voucher bookings the
+        # payment record is already created by ushbooknpay at voucher-redemption
+        # time — creating it again here would produce a duplicate.
+        payment_type: str = str(data.get("payment_type") or "").lower()
+        _is_gift_voucher: bool = payment_type == "gift_voucher"
+        if booking_id and is_paid and not _is_gift_voucher:
             try:
                 booknpay_client = UshBookNPayClient()
                 pricing: dict = data.get("pricing") or {}
@@ -621,6 +626,14 @@ class BookingConfirmedHandler:
                     booking_id=booking_id,
                     error=str(exc),
                 )
+        elif _is_gift_voucher:
+            # Payment record was already created by ushbooknpay at voucher-redemption
+            # time — skip to avoid duplicate and log for traceability.
+            logger.info(
+                "booking_confirmed_payment_record_skipped_gift_voucher",
+                booking_id=booking_id,
+                customer_id=customer_id,
+            )
 
         # ── 3. Create / increment loyalty tracker in ushbooknpay ─────────────
         # Only for branch bookings (not home service) on loyalty-eligible services
