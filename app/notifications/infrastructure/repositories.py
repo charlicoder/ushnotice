@@ -145,6 +145,40 @@ class EventRepository:
         )
         await self._db.flush()
 
+    async def mark_failed_by_id(self, event_id: object, *, error: str) -> None:
+        """Transition event status to FAILED using a raw PK value.
+
+        Prefer this over ``mark_failed`` when the ORM instance may be expired
+        (e.g. after a ``rollback()``), to avoid a lazy-load that raises
+        ``MissingGreenlet`` inside an async context.
+        """
+        await self._db.execute(
+            update(Event)
+            .where(Event.id == event_id)
+            .values(
+                status=EventStatus.FAILED.value,
+                error=error,
+                retry_count=Event.retry_count + 1,
+            )
+        )
+        await self._db.flush()
+
+    async def mark_processed_by_id(self, event_id: object) -> None:
+        """Transition event status to PROCESSED using a raw PK value.
+
+        Prefer this over ``mark_processed`` when the ORM instance may be
+        expired after a ``rollback()``.
+        """
+        await self._db.execute(
+            update(Event)
+            .where(Event.id == event_id)
+            .values(
+                status=EventStatus.PROCESSED.value,
+                processed_at=_utcnow(),
+            )
+        )
+        await self._db.flush()
+
     async def mark_invalid(self, event: Event, *, error: str) -> None:
         """Transition event status to INVALID (schema validation failure)."""
         await self._db.execute(

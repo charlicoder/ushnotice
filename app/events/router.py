@@ -64,13 +64,19 @@ class EventRouter:
 
         await ctx.event_repo.mark_processing(event_record)
 
+        # Cache the event PK as a plain Python value NOW, before any rollback.
+        # After rollback() SQLAlchemy expires all ORM attributes; accessing
+        # event_record.id afterward triggers a lazy DB refresh which fails with
+        # MissingGreenlet inside the asyncpg async loop.
+        event_record_id = event_record.id
+
         handler_errors: list[str] = []
 
         for handler in handlers:
             handler_name = type(handler).__name__
             try:
                 processing = await guard.acquire(
-                    event_id=event_record.id,
+                    event_id=event_record_id,
                     handler_name=handler_name,
                 )
             except IdempotencyConflict:
@@ -121,9 +127,11 @@ class EventRouter:
                 await ctx.db.rollback()
             except Exception:
                 pass
-            await ctx.event_repo.mark_failed(event_record, error=full_error)
+            # Use the cached plain ID — event_record attributes are expired after rollback
+            await ctx.event_repo.mark_failed_by_id(event_record_id, error=full_error)
             await ctx.db.commit()
             raise RuntimeError(f"Handler execution failed for event {event_id}: {full_error}")
 
-        await ctx.event_repo.mark_processed(event_record)
+        # Use the cached plain ID for consistency
+        await ctx.event_repo.mark_processed_by_id(event_record_id)
         logger.info("Event routed and processed successfully", event_id=event_id, event_type=event_type)

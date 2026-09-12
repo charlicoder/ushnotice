@@ -169,5 +169,29 @@ class UshAuthClient:
             correlation_id=correlation_id,
         )
 
+    async def update_appointment_cache_payment_status(
+        self,
+        *,
+        booking_id: str,
+        payment_status: str,
+        correlation_id: str | None = None,
+    ) -> dict:
+        """Update the payment_status of all UshSpaAppointmentCache records for a booking.
+
+        Args:
+            booking_id: UUID of the booking (maps to bookings_id column).
+            payment_status: New payment status value (e.g. 'success').
+            correlation_id: Distributed tracing correlation ID.
+        """
+        payload: dict = {
+            "booking_id": booking_id,
+            "payment_status": payment_status,
+        }
+        return await self._client.post(
+            "/api/v1/update-appointment-cache-payment-status/",
+            json=payload,
+            correlation_id=correlation_id,
+        )
+
     async def aclose(self) -> None:
         await self._client.aclose()
