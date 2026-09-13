@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     USHNOTICE_BASE_PATH: str = "/unotice"
     GATEWAY_TIMEOUT: float = 10.0
 
+    # Public-facing base URL for shop order tracking pages sent to customers.
+    # Format: https://ushspa.co/order-tracking  (no trailing slash)
+    # The full tracking link will be: {USH_ORDER_TRACKING_BASE_URL}/{public_token}
+    USH_ORDER_TRACKING_BASE_URL: str = ""
+
     # ── AWS ───────────────────────────────────────────────────────────────────
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: SecretStr = SecretStr("")

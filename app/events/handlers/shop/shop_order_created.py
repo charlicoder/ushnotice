@@ -1,27 +1,21 @@
 """
 Handler for ``shop.order_created`` event.
 
-Fired by ushbooknpay when a new shop order is placed.
+Fired by ushbooknpay when a new shop order is placed AND payment is confirmed.
 
 Actions:
   1. Send a WhatsApp confirmation message (preferred).
-  2. Fall back to SMS if WhatsApp is not available.
+  2. Fall back to SMS if WhatsApp delivery failed or returned non-SENT status.
 
 The message includes:
   - Order number
   - Total amount
   - A public tracking URL where the customer can follow delivery status
-  - The secret tracking_code required to confirm receipt
+  - The 6-digit tracking_code PIN required to confirm receipt
 
-Message format (EN):
-  "Your order #ORD-2026-0001 for 3.500 KWD has been received!
-   Track it here: https://<domain>/shop/track/ORD-2026-0001/
-   When your package arrives, use code ABC12345 to confirm receipt."
-
-Message format (AR):
-  "تم استلام طلبك رقم ORD-2026-0001 بقيمة 3.500 د.ك!
-   تابع توصيلتك هنا: https://<domain>/shop/track/ORD-2026-0001/
-   عند وصول الطرد استخدم الرمز ABC12345 لتأكيد الاستلام."
+Tracking URL format:
+  {USH_ORDER_TRACKING_BASE_URL}/{public_token}
+  e.g. https://ushspa.co/order-tracking/R7xKj2mN...qQs
 """
 
 from __future__ import annotations
@@ -32,9 +26,26 @@ from app.events.handlers.base import HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.notifications.application.channel_resolver import ChannelResolver
 from app.notifications.application.notification_service import NotificationService
+from app.notifications.domain.enums import NotificationStatus
 from app.notifications.domain.value_objects import NotificationRequest
 
 logger = get_logger(__name__)
+
+
+def _build_tracking_url(settings, public_token: str, order_number: str) -> str:
+    """
+    Build the public order-tracking URL.
+
+    Prefers USH_ORDER_TRACKING_BASE_URL/{public_token} when both are available.
+    Falls back to the API gateway URL if USH_ORDER_TRACKING_BASE_URL is not set.
+    """
+    if settings.USH_ORDER_TRACKING_BASE_URL and public_token:
+        base = settings.USH_ORDER_TRACKING_BASE_URL.rstrip("/")
+        return f"{base}/{public_token}"
+    # Legacy / fallback path via Kong gateway
+    base = settings.API_GATEWAY_BASE_URL.rstrip("/")
+    token_or_number = public_token or order_number
+    return f"{base}/booknpay/api/v1/track/{token_or_number}/"
 
 
 def _whatsapp_message(
@@ -45,12 +56,12 @@ def _whatsapp_message(
     tracking_code: str,
     customer_name: str,
 ) -> str:
-    """Compose the WhatsApp/SMS confirmation text (English)."""
+    """Compose the WhatsApp confirmation text (English)."""
     return (
         f"Hi {customer_name}, your order *{order_number}* for {total_amount} {currency} "
         f"has been received! 🛍️\n\n"
         f"Track your delivery here:\n{tracking_url}\n\n"
-        f"When your package arrives, use code *{tracking_code}* to confirm receipt. "
+        f"When your package arrives, enter PIN *{tracking_code}* to confirm receipt. "
         f"Keep this code safe — it is required to mark your order as received."
     )
 
@@ -62,11 +73,11 @@ def _whatsapp_message_ar(
     tracking_url: str,
     tracking_code: str,
 ) -> str:
-    """Compose the WhatsApp/SMS confirmation text (Arabic)."""
+    """Compose the WhatsApp confirmation text (Arabic)."""
     return (
         f"تم استلام طلبك رقم *{order_number}* بقيمة {total_amount} {currency} 🛍️\n\n"
         f"تابع توصيلتك هنا:\n{tracking_url}\n\n"
-        f"عند وصول الطرد، استخدم الرمز *{tracking_code}* لتأكيد الاستلام. "
+        f"عند وصول الطرد، أدخل الرمز *{tracking_code}* لتأكيد الاستلام. "
         f"احتفظ بهذا الرمز — فهو مطلوب لتأكيد وصول طلبك."
     )
 
@@ -78,10 +89,10 @@ def _sms_message(
     tracking_url: str,
     tracking_code: str,
 ) -> str:
-    """Compact SMS version (character limit aware)."""
+    """Compact SMS version (character-limit aware)."""
     return (
         f"Order {order_number} confirmed. {total_amount} {currency}. "
-        f"Track: {tracking_url} | Receipt code: {tracking_code}"
+        f"Track: {tracking_url} | PIN: {tracking_code}"
     )
 
 
@@ -89,10 +100,12 @@ class ShopOrderCreatedHandler:
     """
     Processes ``shop.order_created`` events.
 
-    Sends a WhatsApp or SMS message to the customer with:
-    - Order confirmation
-    - Public tracking URL
-    - Secret code to confirm receipt
+    Strategy:
+      1. Try WhatsApp — check the returned Notification.status to confirm actual delivery.
+      2. If WhatsApp was NOT successfully sent (status != SENT/DELIVERED), send SMS.
+
+    This ensures SMS is always delivered even when WhatsApp fails at the provider level,
+    because NotificationService.send() never raises — it only updates the Notification status.
     """
 
     event_type: str = "shop.order_created"
@@ -109,6 +122,7 @@ class ShopOrderCreatedHandler:
         total_amount: str = data.get("total_amount") or "0.000"
         currency: str = data.get("currency") or "KWD"
         tracking_code: str = data.get("tracking_code") or ""
+        public_token: str = data.get("public_token") or ""
         correlation_id: str = envelope.event_id_str or ""
 
         if not order_number:
@@ -126,10 +140,17 @@ class ShopOrderCreatedHandler:
             )
             return
 
-        # Build the public tracking URL
-        base_url = settings.API_GATEWAY_BASE_URL.rstrip("/")
-        tracking_url = f"{base_url}/booknpay/api/v1/track/{order_number}/"
+        # ── Build tracking URL ────────────────────────────────────────────────
+        tracking_url = _build_tracking_url(settings, public_token, order_number)
 
+        logger.info(
+            "shop_order_created_tracking_url",
+            order_number=order_number,
+            tracking_url=tracking_url,
+            event_id=correlation_id,
+        )
+
+        # ── Pre-compose all message bodies ────────────────────────────────────
         en_body = _whatsapp_message(
             order_number=order_number,
             total_amount=total_amount,
@@ -153,7 +174,7 @@ class ShopOrderCreatedHandler:
             tracking_code=tracking_code,
         )
 
-        template_context = {
+        base_context = {
             "order_id": order_id,
             "order_number": order_number,
             "customer_name": customer_name,
@@ -167,9 +188,9 @@ class ShopOrderCreatedHandler:
         }
 
         service = NotificationService(ctx)
-        whatsapp_sent = False
+        whatsapp_sent = False  # True only when provider confirms SENT/DELIVERED
 
-        # ── 1. WhatsApp (preferred) ───────────────────────────────────────
+        # ── 1. WhatsApp (preferred) ───────────────────────────────────────────
         wa_recipient = ChannelResolver.resolve_whatsapp_recipient(data)
         if wa_recipient:
             req_wa = NotificationRequest(
@@ -177,7 +198,7 @@ class ShopOrderCreatedHandler:
                 recipient=wa_recipient,
                 template_name="shop/order_created_whatsapp",
                 template_context={
-                    **template_context,
+                    **base_context,
                     "customer_name": wa_recipient.name or customer_name,
                     "message_body": en_body,
                 },
@@ -185,21 +206,36 @@ class ShopOrderCreatedHandler:
                 correlation_id=correlation_id,
             )
             try:
-                await service.send(req_wa)
-                whatsapp_sent = True
-                logger.info(
-                    "shop_order_created_whatsapp_sent",
-                    order_number=order_number,
-                    customer_id=customer_id,
-                )
+                notification = await service.send(req_wa)
+                # service.send() never raises — check actual delivery status
+                if notification.status in (
+                    NotificationStatus.SENT.value,
+                    NotificationStatus.DELIVERED.value,
+                ):
+                    whatsapp_sent = True
+                    logger.info(
+                        "shop_order_created_whatsapp_sent",
+                        order_number=order_number,
+                        customer_id=customer_id,
+                        status=notification.status,
+                        event_id=correlation_id,
+                    )
+                else:
+                    logger.warning(
+                        "shop_order_created_whatsapp_failed",
+                        order_number=order_number,
+                        status=notification.status,
+                        event_id=correlation_id,
+                    )
             except Exception as exc:
                 logger.warning(
-                    "shop_order_created_whatsapp_failed",
+                    "shop_order_created_whatsapp_exception",
                     order_number=order_number,
                     error=str(exc),
+                    event_id=correlation_id,
                 )
 
-        # ── 2. SMS fallback (if WhatsApp not sent) ────────────────────────
+        # ── 2. SMS (fallback — always sent if WhatsApp was not confirmed) ─────
         if not whatsapp_sent:
             sms_recipient = ChannelResolver.resolve_sms_recipient(data)
             if sms_recipient:
@@ -208,7 +244,7 @@ class ShopOrderCreatedHandler:
                     recipient=sms_recipient,
                     template_name="shop/order_created_sms",
                     template_context={
-                        **template_context,
+                        **base_context,
                         "customer_name": sms_recipient.name or customer_name,
                         "message_body": sms_body,
                     },
@@ -216,22 +252,44 @@ class ShopOrderCreatedHandler:
                     correlation_id=correlation_id,
                 )
                 try:
-                    await service.send(req_sms)
-                    logger.info(
-                        "shop_order_created_sms_sent",
-                        order_number=order_number,
-                        customer_id=customer_id,
-                    )
+                    notification = await service.send(req_sms)
+                    if notification.status in (
+                        NotificationStatus.SENT.value,
+                        NotificationStatus.DELIVERED.value,
+                    ):
+                        logger.info(
+                            "shop_order_created_sms_sent",
+                            order_number=order_number,
+                            customer_id=customer_id,
+                            status=notification.status,
+                            event_id=correlation_id,
+                        )
+                    else:
+                        logger.warning(
+                            "shop_order_created_sms_failed",
+                            order_number=order_number,
+                            status=notification.status,
+                            event_id=correlation_id,
+                        )
                 except Exception as exc:
                     logger.warning(
-                        "shop_order_created_sms_failed",
+                        "shop_order_created_sms_exception",
                         order_number=order_number,
                         error=str(exc),
+                        event_id=correlation_id,
                     )
+            else:
+                logger.warning(
+                    "shop_order_created_no_sms_recipient",
+                    order_number=order_number,
+                    reason="No phone number found in event payload",
+                    event_id=correlation_id,
+                )
 
         if not whatsapp_sent and not (wa_recipient or ChannelResolver.resolve_sms_recipient(data)):
             logger.warning(
                 "shop_order_created_no_notification_sent",
                 order_number=order_number,
-                reason="no valid phone/whatsapp contact found",
+                reason="No valid phone/WhatsApp contact found in event payload",
+                event_id=correlation_id,
             )
