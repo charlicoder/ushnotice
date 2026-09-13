@@ -1,29 +1,30 @@
 """
 Handler for ``shop.order_created`` event.
 
-Fired by ushbooknpay when a new shop order is placed AND payment is confirmed.
+Fired by ushbooknpay when a shop order is placed AND payment_status = success.
 
-Actions:
-  1. Send a WhatsApp confirmation message (preferred).
-  2. Fall back to SMS if WhatsApp delivery failed or returned non-SENT status.
+Actions (in order):
+  1. Create a payment record in ushbooknpay at POST /booknpay/api/v1/payments/
+     so the finance dashboard can track the transaction.
+  2. Send a WhatsApp confirmation (preferred channel).
+  3. Fall back to SMS if WhatsApp delivery was not confirmed by the provider.
 
 The message includes:
   - Order number
-  - Total amount
-  - A public tracking URL where the customer can follow delivery status
-  - The 6-digit tracking_code PIN required to confirm receipt
-
-Tracking URL format:
-  {USH_ORDER_TRACKING_BASE_URL}/{public_token}
-  e.g. https://ushspa.co/order-tracking/R7xKj2mN...qQs
+  - Total amount and currency
+  - A public tracking URL: {USH_ORDER_TRACKING_BASE_URL}/{public_token}
+  - The 6-digit PIN (tracking_code) required to confirm receipt
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.handlers.base import HandlerContext
 from app.events.schemas.envelope import EventEnvelope
+from app.integrations.ushbooknpay_client import UshBookNPayClient
 from app.notifications.application.channel_resolver import ChannelResolver
 from app.notifications.application.notification_service import NotificationService
 from app.notifications.domain.enums import NotificationStatus
@@ -36,13 +37,13 @@ def _build_tracking_url(settings, public_token: str, order_number: str) -> str:
     """
     Build the public order-tracking URL.
 
-    Prefers USH_ORDER_TRACKING_BASE_URL/{public_token} when both are available.
-    Falls back to the API gateway URL if USH_ORDER_TRACKING_BASE_URL is not set.
+    Priority:
+      1. {USH_ORDER_TRACKING_BASE_URL}/{public_token}   (preferred — clean public URL)
+      2. {API_GATEWAY_BASE_URL}/booknpay/api/v1/track/{public_token or order_number}/
     """
     if settings.USH_ORDER_TRACKING_BASE_URL and public_token:
         base = settings.USH_ORDER_TRACKING_BASE_URL.rstrip("/")
         return f"{base}/{public_token}"
-    # Legacy / fallback path via Kong gateway
     base = settings.API_GATEWAY_BASE_URL.rstrip("/")
     token_or_number = public_token or order_number
     return f"{base}/booknpay/api/v1/track/{token_or_number}/"
@@ -100,12 +101,13 @@ class ShopOrderCreatedHandler:
     """
     Processes ``shop.order_created`` events.
 
-    Strategy:
-      1. Try WhatsApp — check the returned Notification.status to confirm actual delivery.
-      2. If WhatsApp was NOT successfully sent (status != SENT/DELIVERED), send SMS.
+    Flow:
+      1. Create payment record in ushbooknpay (fire-and-forget, non-blocking on failure).
+      2. Try WhatsApp — check the returned Notification.status to confirm actual delivery.
+      3. If WhatsApp was NOT confirmed sent, fall back to SMS.
 
-    This ensures SMS is always delivered even when WhatsApp fails at the provider level,
-    because NotificationService.send() never raises — it only updates the Notification status.
+    Note: NotificationService.send() never raises — it catches all provider errors and
+    returns a Notification with status=FAILED. We must inspect status explicitly.
     """
 
     event_type: str = "shop.order_created"
@@ -114,15 +116,22 @@ class ShopOrderCreatedHandler:
         data = envelope.data
         settings = get_settings()
 
+        # ── Extract event fields ──────────────────────────────────────────────
         order_id: str = data.get("order_id") or ""
         order_number: str = data.get("order_number") or ""
         customer_id: str = data.get("customer_id") or ""
         customer_name: str = data.get("customer_name") or ""
         customer_phone: str = data.get("customer_phone") or ""
+        customer_data: dict = data.get("customer_data") or {}
         total_amount: str = data.get("total_amount") or "0.000"
         currency: str = data.get("currency") or "KWD"
         tracking_code: str = data.get("tracking_code") or ""
         public_token: str = data.get("public_token") or ""
+        items: list = data.get("items") or []
+        payment_status: str = data.get("payment_status") or "success"
+        payment_method: str = data.get("payment_method") or ""
+        payment_type: str = data.get("payment_type") or ""
+        payment_provider: str = data.get("payment_provider") or ""
         correlation_id: str = envelope.event_id_str or ""
 
         if not order_number:
@@ -131,6 +140,49 @@ class ShopOrderCreatedHandler:
                 event_id=correlation_id,
             )
             return
+
+        if not customer_id:
+            logger.warning(
+                "shop_order_created_missing_customer_id",
+                order_id=order_id,
+                order_number=order_number,
+                event_id=correlation_id,
+            )
+            return
+
+        # ── 1. Create payment record ──────────────────────────────────────────
+        booknpay = UshBookNPayClient()
+        try:
+            payment_response = await booknpay.create_shop_order_payment(
+                order_id=order_id,
+                customer_id=customer_id,
+                total_amount=total_amount,
+                currency=currency,
+                payment_status=payment_status,
+                payment_method=payment_method,
+                payment_type=payment_type,
+                payment_provider=payment_provider,
+                customer_data=customer_data,
+                product_order_items=items,
+                correlation_id=correlation_id,
+            )
+            payment_id = (payment_response or {}).get("id") or "?"
+            logger.info(
+                "shop_order_payment_record_created",
+                order_id=order_id,
+                order_number=order_number,
+                payment_id=payment_id,
+                event_id=correlation_id,
+            )
+        except Exception as exc:
+            # Non-fatal — log and continue with notification
+            logger.warning(
+                "shop_order_payment_record_failed",
+                order_id=order_id,
+                order_number=order_number,
+                error=str(exc),
+                event_id=correlation_id,
+            )
 
         if not customer_phone and not customer_id:
             logger.warning(
@@ -190,7 +242,7 @@ class ShopOrderCreatedHandler:
         service = NotificationService(ctx)
         whatsapp_sent = False  # True only when provider confirms SENT/DELIVERED
 
-        # ── 1. WhatsApp (preferred) ───────────────────────────────────────────
+        # ── 2. WhatsApp (preferred) ───────────────────────────────────────────
         wa_recipient = ChannelResolver.resolve_whatsapp_recipient(data)
         if wa_recipient:
             req_wa = NotificationRequest(
@@ -222,7 +274,7 @@ class ShopOrderCreatedHandler:
                     )
                 else:
                     logger.warning(
-                        "shop_order_created_whatsapp_failed",
+                        "shop_order_created_whatsapp_not_delivered",
                         order_number=order_number,
                         status=notification.status,
                         event_id=correlation_id,
@@ -235,7 +287,7 @@ class ShopOrderCreatedHandler:
                     event_id=correlation_id,
                 )
 
-        # ── 2. SMS (fallback — always sent if WhatsApp was not confirmed) ─────
+        # ── 3. SMS (fallback — always sent if WhatsApp was not confirmed) ─────
         if not whatsapp_sent:
             sms_recipient = ChannelResolver.resolve_sms_recipient(data)
             if sms_recipient:
@@ -266,7 +318,7 @@ class ShopOrderCreatedHandler:
                         )
                     else:
                         logger.warning(
-                            "shop_order_created_sms_failed",
+                            "shop_order_created_sms_not_delivered",
                             order_number=order_number,
                             status=notification.status,
                             event_id=correlation_id,

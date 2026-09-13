@@ -223,6 +223,99 @@ class UshBookNPayClient:
         )
 
 
+    async def create_shop_order_payment(
+        self,
+        *,
+        order_id: str,
+        customer_id: str,
+        total_amount: str,
+        currency: str = "KWD",
+        payment_status: str = "success",
+        payment_method: str = "",
+        payment_type: str = "",
+        payment_provider: str = "",
+        customer_data: dict | None = None,
+        product_order_items: list | None = None,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a payment record for a shop (product) order.
+
+        Called by the ShopOrderCreatedHandler in ushnotice after receiving the
+        ``shop.order_created`` SQS event. Maps order data to the Payment model.
+
+        Args:
+            order_id:            UUID of the shop_order (→ product_order_id on Payment).
+            customer_id:         UUID of the customer (required by Payment model).
+            total_amount:        Order total as a string Decimal.
+            currency:            ISO currency code (default "KWD").
+            payment_status:      Payment status — always "success" when this is called.
+            payment_method:      How the customer paid: card, knet, cash, apple_pay, etc.
+            payment_type:        Payment channel: gateway, desk, gift_voucher, etc.
+            payment_provider:    Provider: MyFatoorah, DirectLink, Deema, Other.
+            customer_data:       Customer snapshot dict {id, name, phone, contact_number}.
+            product_order_items: Items list from the SQS event (snapshot at order time).
+            correlation_id:      Propagated tracing ID.
+        """
+        # Normalise payment_provider to spec values
+        _prov = (payment_provider or "").strip().lower()
+        if "fatoorah" in _prov:
+            normalised_provider = "MyFatoorah"
+        elif "directlink" in _prov or "direct" in _prov:
+            normalised_provider = "DirectLink"
+        elif "deema" in _prov:
+            normalised_provider = "Deema"
+        elif _prov:
+            normalised_provider = "Other"
+        else:
+            normalised_provider = "Other"
+
+        # Normalise payment_method
+        _method = (payment_method or "").strip().lower()
+        if not _method or _method in ("", "unknown"):
+            _method = "card"
+
+        # Normalise payment_through from payment_type
+        _type = (payment_type or "").strip().lower()
+        if "desk" in _type:
+            normalised_through = "desk"
+        elif "ushspa" in _type:
+            normalised_through = "ushspa"
+        else:
+            normalised_through = "ushspa"
+
+        # Build customer snapshot
+        _customer_data: dict[str, Any] = customer_data or {}
+        built_customer_data: dict[str, Any] = {
+            "id": customer_id,
+            "name": _customer_data.get("name", ""),
+            "phone": _customer_data.get("phone") or _customer_data.get("contact_number", ""),
+        }
+
+        payload: dict[str, Any] = {
+            # ── Required fields ──────────────────────────────────────
+            "customer_id": customer_id,
+            "total_amount": total_amount,
+            "total_duration": 0,           # product orders have no duration
+            "currency": currency,
+            # ── Product order association ────────────────────────────
+            "product_order_id": order_id,
+            "product_order_items": product_order_items or [],
+            # ── Status & classification ──────────────────────────────
+            "status": payment_status,
+            "payment_for": "product_items",
+            "payment_provider": normalised_provider,
+            "payment_through": normalised_through,
+            "payment_method": _method,
+            # ── Customer snapshot ────────────────────────────────────
+            "customer_data": built_customer_data,
+        }
+
+        return await self._client.post(
+            "/api/v1/payments/",
+            json=payload,
+            correlation_id=correlation_id,
+        )
+
     async def record_loyalty_tracker(
         self,
         *,
