@@ -18,21 +18,13 @@ logger = get_logger(__name__)
 
 
 class CustomerNewCreatedHandler:
-    """Processes customer.new_created events by sending a welcome SMS."""
+    """Processes customer.new_created events by sending a welcome SMS and WhatsApp."""
 
     event_type: str = "customer.new_created"
 
     async def handle(self, envelope: EventEnvelope, ctx: HandlerContext) -> None:
         data = envelope.data
         service = NotificationService(ctx)
-
-        sms_recipient = ChannelResolver.resolve_sms_recipient(data)
-        if not sms_recipient:
-            logger.warning(
-                "No phone number in customer.new_created event — skipping SMS",
-                event_id=envelope.event_id_str,
-            )
-            return
 
         # Build display name from first_name / last_name or name field
         customer_name = (
@@ -43,24 +35,69 @@ class CustomerNewCreatedHandler:
             or ""
         ).strip()
 
-        req = NotificationRequest(
-            event_id=envelope.event_id_str,
-            recipient=sms_recipient,
-            template_name="user/customer_new_created",
-            template_context={
-                "customer_name": customer_name,
-                "password": data.get("password") or "",
-            },
-            customer_id=str(data.get("user_id") or data.get("customer_id") or ""),
-            correlation_id=envelope.correlation_id_str,
-        )
-        await service.send(req)
+        password = str(data.get("password") or "")
+        customer_id = str(data.get("user_id") or data.get("customer_id") or "")
 
-        logger.info(
-            "Welcome SMS sent for new customer",
-            event_id=envelope.event_id_str,
-            phone=sms_recipient.address,
-        )
+        # 1. WhatsApp Welcome Notification
+        try:
+            wa_recipient = ChannelResolver.resolve_whatsapp_recipient(data)
+            if wa_recipient:
+                req_wa = NotificationRequest(
+                    event_id=envelope.event_id_str,
+                    recipient=wa_recipient,
+                    template_name="user/customer_new_created",
+                    template_context={
+                        "customer_name": customer_name,
+                        "password": password,
+                    },
+                    customer_id=customer_id,
+                    correlation_id=envelope.correlation_id_str,
+                )
+                await service.send(req_wa)
+                logger.info(
+                    "Welcome WhatsApp sent for new customer",
+                    event_id=envelope.event_id_str,
+                    phone=wa_recipient.address,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Welcome WhatsApp failed for new customer",
+                event_id=envelope.event_id_str,
+                error=str(exc),
+            )
+
+        # 2. SMS Welcome Notification
+        try:
+            sms_recipient = ChannelResolver.resolve_sms_recipient(data)
+            if sms_recipient:
+                req_sms = NotificationRequest(
+                    event_id=envelope.event_id_str,
+                    recipient=sms_recipient,
+                    template_name="user/customer_new_created",
+                    template_context={
+                        "customer_name": customer_name,
+                        "password": password,
+                    },
+                    customer_id=customer_id,
+                    correlation_id=envelope.correlation_id_str,
+                )
+                await service.send(req_sms)
+                logger.info(
+                    "Welcome SMS sent for new customer",
+                    event_id=envelope.event_id_str,
+                    phone=sms_recipient.address,
+                )
+            else:
+                logger.warning(
+                    "No phone number in customer.new_created event — skipping SMS",
+                    event_id=envelope.event_id_str,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Welcome SMS failed for new customer",
+                event_id=envelope.event_id_str,
+                error=str(exc),
+            )
 
 
 class CustomerCreatedHandler(CustomerNewCreatedHandler):

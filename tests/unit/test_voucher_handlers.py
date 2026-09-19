@@ -139,6 +139,16 @@ class TestRecipientMessages:
         subject = _recipient_email_subject(self.ctx)
         assert "K Md Mamunur Rashid" in subject
 
+    def test_whatsapp_message_contains_password_when_provided(self):
+        ctx_with_pass = {**self.ctx, "recipient_password": "987654"}
+        msg = _recipient_whatsapp_message(ctx_with_pass)
+        assert "*Your Login Password:* 987654" in msg
+
+    def test_sms_message_contains_password_when_provided(self):
+        ctx_with_pass = {**self.ctx, "recipient_password": "987654"}
+        msg = _recipient_sms_message(ctx_with_pass)
+        assert "Login pass: 987654" in msg
+
 
 # ── VoucherRedeemedHandler — unit tests ───────────────────────────────────────
 

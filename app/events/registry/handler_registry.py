@@ -210,6 +210,25 @@ def build_default_registry() -> HandlerRegistry:
             _alias.event_type = _alias_type
             registry.register(_alias)
 
+    # ── Gift (V2) handlers ────────────────────────────────────────────────────
+    from app.events.handlers.gifts.gift_purchase_completed import GiftPurchaseCompletedHandler
+    from app.events.handlers.gifts.gift_claimed import GiftClaimedHandler
+    from app.events.handlers.gifts.gift_redeemed_purchase import GiftRedeemedPurchaseHandler
+    from app.events.handlers.gifts.gift_delivered import GiftDeliveredHandler
+
+    for _h in [
+        GiftPurchaseCompletedHandler(),
+        GiftClaimedHandler(),
+        GiftRedeemedPurchaseHandler(),
+        GiftDeliveredHandler(),
+    ]:
+        registry.register(_h)
+        _alias_type = _h.event_type.replace(".", "_")
+        if _alias_type != _h.event_type:
+            _alias = _h.__class__()
+            _alias.event_type = _alias_type
+            registry.register(_alias)
+
     logger.info(
         "Handler registry built",
         event_types=registry.registered_event_types(),

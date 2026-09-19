@@ -86,6 +86,7 @@ def _build_voucher_context(data: dict) -> dict:
         "recipient_name": recipient_name,
         "recipient_phone": recipient_details.get("phone_number") or data.get("recipient_phone") or "",
         "recipient_email": recipient_details.get("email") or data.get("recipient_email") or "",
+        "recipient_password": str(recipient_details.get("password") or data.get("recipient_password") or ""),
     }
 
 
@@ -154,6 +155,13 @@ def _recipient_whatsapp_message(ctx: dict) -> str:
     lines += [
         "",
         "🔐 *Your Secret Code:* " + (ctx["secret_code"] or "See your email"),
+    ]
+    if ctx.get("recipient_password"):
+        lines += [
+            "",
+            f"🔑 *Your Login Password:* {ctx['recipient_password']}",
+        ]
+    lines += [
         "",
         f"🌐 *View Your Gift Card:* {ctx['gift_card_url']}",
         "",
@@ -170,8 +178,9 @@ def _recipient_sms_message(ctx: dict) -> str:
     sender = ctx["sender_name"] or "Someone special"
     expire_part = f" Valid until {ctx['expire_date']}." if ctx["expire_date"] else ""
     code_part = f" Code: {ctx['secret_code']}." if ctx["secret_code"] else ""
+    pass_part = f" Login pass: {ctx['recipient_password']}." if ctx.get("recipient_password") else ""
     return (
-        f"USHSPA: Hi {name_first}, you received a gift from {sender}!{expire_part}{code_part} "
+        f"USHSPA: Hi {name_first}, you received a gift from {sender}!{expire_part}{code_part}{pass_part} "
         f"View: {ctx['gift_card_url']}"
     )
 
