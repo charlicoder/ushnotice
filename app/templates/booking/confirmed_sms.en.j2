@@ -1,1 +1,2 @@
-USHSPA: Hi {{ customer_name.split()[0] if customer_name else 'Customer' }}, your booking is CONFIRMED for {{ appointment_date }} at {{ appointment_time }}.{% if booking_reference %} Ref:{{ booking_reference }}{% endif %} See you soon!
+USHSPA: 
+Hi {{ customer_name.split()[0] if customer_name else 'Customer' }}, your booking is CONFIRMED for {{ appointment_date }} at {{ appointment_time }}. Your booking number:{{ booking_number if booking_number else booking_reference }} See you soon!

@@ -124,6 +124,7 @@ def _build_booking_context(data: dict) -> dict:
     return {
         "booking_id": data.get("booking_id") or "",
         "booking_reference": booking_reference,
+        "booking_number": data.get("booking_number") or "",
         "branch_name": branch_name,
         "branch_location": branch_location,
         "branch_phone": branch_phone,
@@ -184,15 +185,20 @@ def _whatsapp_message(context: dict, customer_name: str) -> str:
 
 
 def _sms_message(context: dict, customer_name: str) -> str:
-    """Compose a concise SMS confirmation message."""
+    """Compose a concise SMS confirmation message.
+
+    Format:
+        USHSPA:
+        Hi <name>, your booking is CONFIRMED for <date> at <time>. Your booking number:<number> See you soon!
+    """
     name = customer_name.split()[0] if customer_name else "Customer"
     date_str = context["appointment_date"]
     time_str = context["appointment_time"]
-    ref = context["booking_reference"]
-    ref_part = f" Ref:{ref}" if ref else ""
+    booking_number = context.get("booking_number") or context.get("booking_reference") or ""
     return (
-        f"USHSPA: Hi {name}, your booking is CONFIRMED for {date_str} at {time_str}.{ref_part} "
-        f"See you soon!"
+        f"USHSPA: \n"
+        f"Hi {name}, your booking is CONFIRMED for {date_str} at {time_str}."
+        f" Your booking number:{booking_number} See you soon!"
     )
 
 
