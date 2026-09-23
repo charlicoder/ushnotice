@@ -60,6 +60,7 @@ SAMPLE_REDEEMED_DATA = {
     "redeemed_booking": {
         "id": "aabb1234-0000-0000-0000-000000000001",
         "booking_reference": "BK-20260901-001",
+        "booking_number": "B260901001",
         "appointment_date": "2026-10-15",
         "appointment_starttime": "14:00",
         "appointment_endtime": "15:00",
@@ -131,9 +132,19 @@ class TestRecipientMessages:
         msg = _recipient_whatsapp_message(self.ctx)
         assert "ushspa.co" in msg
 
-    def test_sms_message_contains_secret_code(self):
+    def test_sms_message_matches_template(self):
         msg = _recipient_sms_message(self.ctx)
-        assert "655085" in msg
+        assert "USHSPA:" in msg
+        assert "Hi Alayna, you received a gift from K Md Mamunur Rashid !" in msg
+        assert "Message say:" in msg
+        assert "🎈 🙏🏻" in msg
+        assert "View the link below to receive your gift" in msg
+        assert self.ctx["gift_card_url"] in msg
+
+    def test_sms_message_uses_gift_from_when_provided(self):
+        ctx_with_gift_from = {**self.ctx, "gift_from": "Aunt Emily"}
+        msg = _recipient_sms_message(ctx_with_gift_from)
+        assert "Hi Alayna, you received a gift from Aunt Emily !" in msg
 
     def test_email_subject_contains_sender(self):
         subject = _recipient_email_subject(self.ctx)
@@ -143,11 +154,6 @@ class TestRecipientMessages:
         ctx_with_pass = {**self.ctx, "recipient_password": "987654"}
         msg = _recipient_whatsapp_message(ctx_with_pass)
         assert "*Your Login Password:* 987654" in msg
-
-    def test_sms_message_contains_password_when_provided(self):
-        ctx_with_pass = {**self.ctx, "recipient_password": "987654"}
-        msg = _recipient_sms_message(ctx_with_pass)
-        assert "Login pass: 987654" in msg
 
 
 # ── VoucherRedeemedHandler — unit tests ───────────────────────────────────────
@@ -186,6 +192,11 @@ class TestRedeemedMessages:
         msg = _redeemed_sms_message(self.ctx, "recipient")
         assert "USHSPA" in msg
         assert "Deep Tissue Massage" in msg
+        assert msg == (
+            "USHSPA: \n"
+            "Hi Alayna, your gift booking for Deep Tissue Massage on date 2026-10-15 at 14:00  is confirmed. \n"
+            "Your booking number: B260901001 Enjoy!"
+        )
 
     def test_sender_sms(self):
         msg = _redeemed_sms_message(self.ctx, "sender")

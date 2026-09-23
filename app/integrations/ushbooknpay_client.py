@@ -56,40 +56,7 @@ class UshBookNPayClient:
             correlation_id=correlation_id,
         )
 
-    async def update_booking_loyalty_status(
-        self,
-        booking_id: str,
-        *,
-        status: str,
-        payment_status: str,
-        reward_id: str,
-        loyalty_data: dict[str, Any],
-        correlation_id: str | None = None,
-    ) -> dict[str, Any]:
-        """Update a booking's status, payment_status, reward_id and loyalty_data.
 
-        Called when a ``loyalty.redeedmed`` event is received, to mark the
-        free-booking as confirmed and record the reward reference.
-
-        Args:
-            booking_id: UUID of the booking being redeemed.
-            status: Target status (``"confirmed"``).
-            payment_status: Payment status (``"rewarded"``).
-            reward_id: UUID of the loyalty reward being redeemed.
-            loyalty_data: Full reward dict from the SQS event to snapshot on the booking.
-            correlation_id: Distributed tracing correlation ID.
-        """
-        payload: dict[str, Any] = {
-            "status": status,
-            "payment_status": payment_status,
-            "reward_id": reward_id,
-            "loyalty_data": loyalty_data,
-        }
-        return await self._client.patch(
-            f"/api/v1/bookings/{booking_id}/status/",
-            json=payload,
-            correlation_id=correlation_id,
-        )
 
 
     async def get_booking(
@@ -316,57 +283,95 @@ class UshBookNPayClient:
             correlation_id=correlation_id,
         )
 
-    async def record_loyalty_tracker(
+    # ── Loyalty endpoints ──────────────────────────────────────────────────────
+
+    async def credit_loyalty_points(
         self,
         *,
         customer_id: str,
-        service_id: str,
-        booking_id: str,
-        service_arrangement_id: str | None = None,
-        booking_type: str = "branch_service",
-        customer_name: str = "",
-        customer_email: str = "",
-        customer_phone: str = "",
-        service_name: str = "",
-        is_eligible_for_loyalty: bool = False,
+        booking_id: str | None = None,
+        booking_number: str | None = None,
+        loyalty_points: int = 0,
+        arrangement_loyalty_points: int | None = None,
+        created_by: str = "ushnotice",
         correlation_id: str | None = None,
     ) -> dict[str, Any]:
-        """Record a confirmed branch booking for loyalty tracking.
+        """
+        Credit loyalty points to a customer after a confirmed booking.
 
-        Calls POST /api/v1/promotions/internal/loyalty/record/ which increments
-        the counter, issues a LoyaltyReward on the 5th booking, resets counter to 0,
-        and emits a loyalty.rewarded SQS event when a reward is issued.
+        Calls POST /api/v1/loyalty/internal/credit/ on ushbooknpay.
+        The effective points (arrangement override vs service level) are
+        resolved server-side by ushbooknpay's domain rules.
 
         Args:
-            customer_id: UUID of the customer.
-            service_id: UUID of the service (from ushauth).
-            booking_id: UUID of the confirmed booking.
-            service_arrangement_id: Optional UUID of the service arrangement.
-            booking_type: Booking type ("branch").
-            customer_name: Optional customer name for SQS event context.
-            customer_email: Optional customer email for SQS event context.
-            customer_phone: Optional customer phone for SQS event context.
-            service_name: Optional service name for SQS event context.
-            is_eligible_for_loyalty: Whether the service is eligible for loyalty.
-                                     If False, the endpoint skips tracker creation.
-            correlation_id: Propagated correlation ID.
+            customer_id:                Customer UUID string.
+            booking_id:                 Confirmed booking UUID string (optional).
+            booking_number:             Human-readable booking reference (optional).
+            loyalty_points:             Service-level earn points.
+            arrangement_loyalty_points: Arrangement override (None = use service level).
+            created_by:                 Source identifier tag.
+            correlation_id:             Propagated correlation ID.
+
+        Returns:
+            Response dict from ushbooknpay.
         """
         payload: dict[str, Any] = {
             "customer_id": customer_id,
-            "service_id": service_id,
-            "booking_id": booking_id,
-            "booking_type": booking_type,
-            "customer_name": customer_name,
-            "customer_email": customer_email,
-            "customer_phone": customer_phone,
-            "service_name": service_name,
-            "is_eligible_for_loyalty": is_eligible_for_loyalty,
+            "loyalty_points": loyalty_points,
+            "created_by": created_by,
         }
-        if service_arrangement_id:
-            payload["service_arrangement_id"] = service_arrangement_id
+        if booking_id:
+            payload["booking_id"] = booking_id
+        if booking_number:
+            payload["booking_number"] = booking_number
+        if arrangement_loyalty_points is not None:
+            payload["arrangement_loyalty_points"] = arrangement_loyalty_points
 
         return await self._client.post(
-            "/api/v1/promotions/internal/loyalty/record/",
+            "/api/v1/loyalty/internal/credit/",
+            json=payload,
+            correlation_id=correlation_id,
+        )
+
+    async def cancel_loyalty_points(
+        self,
+        *,
+        customer_id: str,
+        points: int,
+        booking_id: str | None = None,
+        booking_number: str | None = None,
+        created_by: str = "ushnotice",
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Reverse earned loyalty points when a booking is cancelled.
+
+        Calls POST /api/v1/loyalty/internal/cancel/ on ushbooknpay.
+        Balance is clamped to ≥ 0 server-side.
+
+        Args:
+            customer_id:    Customer UUID string.
+            points:         Points originally earned (to be reversed).
+            booking_id:     Cancelled booking UUID string (optional).
+            booking_number: Human-readable booking reference (optional).
+            created_by:     Source identifier tag.
+            correlation_id: Propagated correlation ID.
+
+        Returns:
+            Response dict from ushbooknpay.
+        """
+        payload: dict[str, Any] = {
+            "customer_id": customer_id,
+            "points": points,
+            "created_by": created_by,
+        }
+        if booking_id:
+            payload["booking_id"] = booking_id
+        if booking_number:
+            payload["booking_number"] = booking_number
+
+        return await self._client.post(
+            "/api/v1/loyalty/internal/cancel/",
             json=payload,
             correlation_id=correlation_id,
         )

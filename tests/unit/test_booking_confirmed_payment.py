@@ -85,12 +85,6 @@ def test_ushbooknpay_client_has_create_payment():
     )
 
 
-def test_ushbooknpay_client_has_record_loyalty_tracker():
-    """UshBookNPayClient must expose record_loyalty_tracker."""
-    from app.integrations.ushbooknpay_client import UshBookNPayClient
-    assert hasattr(UshBookNPayClient, "record_loyalty_tracker"), (
-        "record_loyalty_tracker must exist on UshBookNPayClient."
-    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -230,42 +224,9 @@ async def test_booking_confirmed_handler_no_payment_when_no_payments_meta():
     assert mock_notification_service.send.call_count >= 0
 
 
-@pytest.mark.asyncio
-async def test_booking_confirmed_loyalty_tracker_record():
-    """record_loyalty_tracker calls internal endpoint with customer_id, service_id, booking_id."""
-    from app.integrations.ushbooknpay_client import UshBookNPayClient
 
-    customer_id = str(uuid.uuid4())
-    service_id = str(uuid.uuid4())
-    booking_id = str(uuid.uuid4())
 
-    mock_post = AsyncMock(return_value={"tracker": {"id": str(uuid.uuid4()), "booking_count": 1}, "reward": None, "reward_issued": False})
 
-    with patch("app.integrations.ushbooknpay_client.GatewayHttpClient") as mock_gw:
-        mock_gw_instance = MagicMock()
-        mock_gw_instance.post = mock_post
-        mock_gw_instance.aclose = AsyncMock()
-        mock_gw.return_value = mock_gw_instance
-
-        client = UshBookNPayClient()
-        await client.record_loyalty_tracker(
-            customer_id=customer_id,
-            service_id=service_id,
-            booking_id=booking_id,
-            customer_name="John Doe",
-        )
-
-    mock_post.assert_called_once()
-    call_args = mock_post.call_args
-    sent_url = call_args.args[0] if call_args.args else call_args.kwargs.get("url", "")
-    assert "/api/v1/promotions/internal/loyalty/record/" in sent_url
-    sent_payload = call_args.kwargs.get("json") or {}
-    assert sent_payload.get("customer_id") == customer_id
-    assert sent_payload.get("service_id") == service_id
-    assert sent_payload.get("booking_id") == booking_id
-    assert sent_payload.get("customer_name") == "John Doe"
-    # is_eligible_for_loyalty must always be included in the payload
-    assert "is_eligible_for_loyalty" in sent_payload
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -389,3 +350,86 @@ async def test_booking_confirmed_pending_payment_uses_event_payment_link():
             f"Expected real payment link in {req.template_name}, "
             f"got: {req.template_context.get('payment_link')}"
         )
+
+
+@pytest.mark.asyncio
+async def test_booking_confirmed_handler_skips_loyalty_credit_for_redemption_bookings():
+    """When a booking is paid with redeemed loyalty points, points must NOT be credited to customer balance."""
+    from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
+    from app.events.handlers.base import HandlerContext
+
+    handler = BookingConfirmedHandler()
+    data = {
+        **CONFIRMED_BOOKING_DATA,
+        "booking_type": "loyalty",
+        "payment_type": "rewarded",
+        "payment_status": "rewarded",
+        "is_eligible_for_loyalty": True,
+        "loyalty_points": 50,
+        "arrangement_loyalty_points": 70,
+        "loyalty_data": {"points_cost": 250},
+        "reward_id": "c1234567-abcd-4567-89ab-cdef01234567",
+    }
+    envelope = _make_confirmed_envelope(data)
+    mock_ctx = MagicMock(spec=HandlerContext)
+
+    mock_notification_service = AsyncMock()
+    mock_ushauth_client = AsyncMock()
+    mock_ushauth_client.create_appointment_cache = AsyncMock(return_value={})
+    mock_ushauth_client.aclose = AsyncMock()
+
+    mock_loyalty_client = AsyncMock()
+    mock_loyalty_client.credit_loyalty_points = AsyncMock()
+    mock_loyalty_client.aclose = AsyncMock()
+
+    with (
+        patch("app.events.handlers.booking.booking_confirmed.NotificationService",
+              return_value=mock_notification_service),
+        patch("app.events.handlers.booking.booking_confirmed.UshAuthClient",
+              return_value=mock_ushauth_client),
+        patch("app.events.handlers.booking.booking_confirmed.UshBookNPayClient",
+              return_value=mock_loyalty_client),
+    ):
+        await handler.handle(envelope, mock_ctx)
+
+    # credit_loyalty_points MUST NOT be called for loyalty redemption booking
+    mock_loyalty_client.credit_loyalty_points.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_booking_cancelled_handler_skips_loyalty_reversal_for_redemption_bookings():
+    """When a loyalty redemption booking is cancelled, no loyalty points reversal should be called."""
+    from app.events.handlers.booking.booking_cancelled import BookingCancelledHandler
+    from app.events.handlers.base import HandlerContext
+    from app.events.schemas.envelope import EventEnvelope
+
+    handler = BookingCancelledHandler()
+    data = {
+        "booking_id": "a1b45593-c5d7-4295-bfdd-1b862db330f4",
+        "customer_id": "b92c374d-fdb5-48ff-96d5-bb4dc2abc452",
+        "booking_type": "loyalty",
+        "payment_type": "rewarded",
+        "is_eligible_for_loyalty": True,
+        "loyalty_points": 50,
+        "reward_id": "c1234567-abcd-4567-89ab-cdef01234567",
+    }
+    envelope = EventEnvelope(
+        event_id=uuid.uuid4(),
+        event_type="booking.cancelled",
+        version=1,
+        occurred_at=datetime.now(tz=timezone.utc),
+        source="ushbooknpay",
+        data=data,
+    )
+    mock_ctx = MagicMock(spec=HandlerContext)
+
+    mock_client = AsyncMock()
+    mock_client.cancel_loyalty_points = AsyncMock()
+    mock_client.aclose = AsyncMock()
+
+    with patch("app.events.handlers.booking.booking_cancelled.UshBookNPayClient",
+               return_value=mock_client):
+        await handler.handle(envelope, mock_ctx)
+
+    mock_client.cancel_loyalty_points.assert_not_awaited()
+

@@ -4,8 +4,7 @@ Handler for `booking.confirmed` event.
 On a confirmed booking this handler:
   1. Creates an appointment-cache record in ushauth (to mark the slot as confirmed).
   2. Creates a payment record in ushbooknpay (from the payment_data in the event).
-  3. Creates / increments a loyalty tracker in ushbooknpay for branch bookings.
-  4. Sends notifications to the customer:
+  3. Sends notifications to the customer:
        • If payment_status == 'pending':
            – WhatsApp/SMS with booking details + a payment link to complete payment.
            – Email with the same information.
@@ -289,8 +288,7 @@ class BookingConfirmedHandler:
     Responsibilities (in order):
       1. Create appointment-cache in ushauth.
       2. Create payment record in ushbooknpay (only when is_paid=True).
-      3. Create / increment loyalty tracker (branch bookings, eligible services).
-      4. Send customer notifications:
+      3. Send customer notifications:
            • payment_status == 'pending' → payment-link messages (WhatsApp/SMS + Email).
            • otherwise                   → standard booking-confirmed messages.
     """
@@ -641,49 +639,79 @@ class BookingConfirmedHandler:
                 customer_id=customer_id,
             )
 
-        # ── 3. Create / increment loyalty tracker in ushbooknpay ─────────────
-        # Only for branch bookings (not home service) on loyalty-eligible services
+        # ── 3. Credit loyalty points (if eligible) ────────────────────────────
+        # Only credit when:
+        #   a) is_eligible_for_loyalty == True in the event payload
+        #   b) the booking has a customer and booking ID
+        #   c) there are points to award (service or arrangement level)
+        #   d) the booking is NOT a points redemption / rewarded booking
+        _is_loyalty_redemption = (
+            booking_type == "loyalty"
+            or payment_type == "rewarded"
+            or str(data.get("payment_status", "")).lower() == "rewarded"
+            or bool(data.get("reward_id"))
+            or bool(data.get("loyalty_data", {}).get("points_cost"))
+            or bool(data.get("loyalty_data", {}).get("reward_id"))
+        )
         is_eligible_for_loyalty: bool = bool(data.get("is_eligible_for_loyalty"))
-        if booking_id and booking_type in ("branch_service", "branch") and customer_id and data.get("service_id") and is_eligible_for_loyalty:
-            try:
-                loyalty_client = UshBookNPayClient()
-                service_data_dict: dict = data.get("service_data") or {}
-                service_name_val = data.get("service_name") or service_data_dict.get("name") or ""
-                await loyalty_client.record_loyalty_tracker(
-                    customer_id=customer_id,
-                    service_id=str(data.get("service_id") or ""),
-                    booking_id=booking_id,
-                    service_arrangement_id=str(data.get("service_arrangement_id") or "") or None,
-                    booking_type=booking_type,
-                    customer_name=customer_name or "",
-                    customer_email=str(data.get("customer_email") or ""),
-                    customer_phone=str(data.get("customer_phone") or ""),
-                    service_name=str(service_name_val),
-                    is_eligible_for_loyalty=True,
-                    correlation_id=correlation_id,
-                )
-                await loyalty_client.aclose()
-                logger.info(
-                    "booking_confirmed_loyalty_tracker_recorded",
-                    booking_id=booking_id,
-                    customer_id=customer_id,
-                    service_id=str(data.get("service_id") or ""),
-                )
-            except Exception as exc:
-                # Non-blocking — loyalty failure must never break the flow
-                logger.warning(
-                    "booking_confirmed_loyalty_tracker_failed",
-                    booking_id=booking_id,
-                    error=str(exc),
-                )
-        elif booking_id and booking_type in ("branch_service", "branch") and not is_eligible_for_loyalty:
+        if _is_loyalty_redemption:
             logger.info(
-                "loyalty_skipped_not_eligible",
+                "booking_confirmed_loyalty_credit_skipped_loyalty_redemption",
                 booking_id=booking_id,
-                service_id=str(data.get("service_id") or ""),
+                customer_id=customer_id,
+            )
+        elif is_eligible_for_loyalty and booking_id and customer_id:
+            _loyalty_points: int = int(data.get("loyalty_points") or 0)
+            _arr_loyalty_points = data.get("arrangement_loyalty_points")  # None or int
+            _effective_points = (
+                _arr_loyalty_points
+                if (_arr_loyalty_points is not None and int(_arr_loyalty_points) > 0)
+                else _loyalty_points
+            )
+            if _effective_points and int(_effective_points) > 0:
+                try:
+                    _loyalty_client = UshBookNPayClient()
+                    await _loyalty_client.credit_loyalty_points(
+                        customer_id=customer_id,
+                        booking_id=booking_id,
+                        booking_number=str(data.get("booking_number") or ""),
+                        loyalty_points=_loyalty_points,
+                        arrangement_loyalty_points=(
+                            int(_arr_loyalty_points)
+                            if _arr_loyalty_points is not None
+                            else None
+                        ),
+                        correlation_id=correlation_id,
+                    )
+                    await _loyalty_client.aclose()
+                    logger.info(
+                        "booking_confirmed_loyalty_credited",
+                        booking_id=booking_id,
+                        customer_id=customer_id,
+                        effective_points=_effective_points,
+                    )
+                except Exception as exc:
+                    # Non-blocking — notification flow must not fail due to loyalty errors
+                    logger.warning(
+                        "booking_confirmed_loyalty_credit_failed",
+                        booking_id=booking_id,
+                        customer_id=customer_id,
+                        error=str(exc),
+                    )
+            else:
+                logger.info(
+                    "booking_confirmed_loyalty_skipped_zero_points",
+                    booking_id=booking_id,
+                    loyalty_points=_loyalty_points,
+                    arrangement_loyalty_points=_arr_loyalty_points,
+                )
+        elif not is_eligible_for_loyalty:
+            logger.debug(
+                "booking_confirmed_loyalty_skipped_not_eligible",
+                booking_id=booking_id,
             )
 
-        # ── 4–6. Customer notifications ──────────────────────────────────────
+
         # payment_status=pending → booking slot reserved, but payment not yet made.
         #                          Send payment-link messages so the customer can pay.
         # All other statuses    → standard "booking confirmed" messages.

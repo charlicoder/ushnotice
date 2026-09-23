@@ -22,14 +22,35 @@ logger = get_logger(__name__)
 
 def _build_redeemed_context(data: dict) -> dict:
     """Extract all fields needed for voucher.redeemed notification templates."""
-    sender_details: dict = data.get("sender_details") or {}
-    recipient_details: dict = data.get("recipient_details") or {}
+    sender_details: dict = data.get("sender_details") or data.get("sender_data") or {}
+    recipient_details: dict = data.get("recipient_details") or data.get("recipient_data") or {}
     service_data: dict = data.get("service_data") or {}
     branch_data: dict = data.get("branch_data") or {}
-    booking_data: dict = data.get("redeemed_booking") or {}
+    booking_data: dict = data.get("redeemed_booking") or data.get("booking_data") or {}
 
-    sender_name = sender_details.get("name") or data.get("sender_name") or "A generous friend"
-    recipient_name = recipient_details.get("name") or data.get("recipient_name") or "Valued Customer"
+    sender_name = (
+        sender_details.get("name")
+        or data.get("sender_name")
+        or "A generous friend"
+    )
+
+    raw_recipient_name = (
+        recipient_details.get("name")
+        or recipient_details.get("first_name")
+        or data.get("recipient_name")
+        or booking_data.get("customer_name")
+        or (booking_data.get("customer_data") or {}).get("name")
+        or (booking_data.get("customer_data") or {}).get("first_name")
+        or data.get("customer_name")
+        or ""
+    )
+    if not raw_recipient_name or raw_recipient_name.strip().lower() in ("valued customer", "valued"):
+        recipient_name = "Valued Customer"
+        username = data.get("username") or "Customer"
+    else:
+        recipient_name = raw_recipient_name
+        username = data.get("username") or raw_recipient_name.split()[0]
+
     service_name = service_data.get("name") or data.get("service_name") or "Spa Experience"
     branch_name = branch_data.get("name") or data.get("branch_name") or "USHSPA"
     branch_location = (
@@ -50,6 +71,7 @@ def _build_redeemed_context(data: dict) -> dict:
         booking_data.get("appointment_starttime")
         or booking_data.get("appointment_time")
         or data.get("appointment_time")
+        or data.get("appointment_starttime")
         or ""
     )
     appointment_end_time = (
@@ -58,19 +80,48 @@ def _build_redeemed_context(data: dict) -> dict:
         or data.get("appointment_end_time")
         or ""
     )
+
+    appt_start_raw = booking_data.get("appointment_start") or data.get("appointment_start") or ""
+    if appt_start_raw and (not appointment_date or not appointment_time):
+        try:
+            if "T" in appt_start_raw:
+                parts = appt_start_raw.split("T")
+                if not appointment_date:
+                    appointment_date = parts[0]
+                if not appointment_time:
+                    appointment_time = parts[1][:5]
+            elif " " in appt_start_raw:
+                parts = appt_start_raw.split()
+                if not appointment_date:
+                    appointment_date = parts[0]
+                if not appointment_time:
+                    appointment_time = parts[1][:5]
+        except Exception:
+            pass
+
+    booking_number = (
+        booking_data.get("booking_number")
+        or data.get("booking_number")
+        or booking_data.get("booking_reference")
+        or data.get("booking_reference")
+        or str(booking_data.get("id") or data.get("booking_id") or "")
+    )
     booking_reference = (
         booking_data.get("booking_reference")
         or data.get("booking_reference")
-        or str(booking_data.get("id") or data.get("booking_id") or "")
+        or booking_number
     )
 
     return {
         "voucher_id": str(data.get("id") or ""),
+        "voucher_number": str(data.get("voucher_number") or ""),
         "booking_id": str(booking_data.get("id") or data.get("booking_id") or ""),
         "booking_reference": booking_reference,
+        "booking_number": booking_number,
         "sender_name": sender_name,
-        "sender_phone": sender_details.get("phone_number") or "",
+        "sender_phone": sender_details.get("phone_number") or data.get("sender_phone") or "",
         "recipient_name": recipient_name,
+        "username": username,
         "recipient_phone": recipient_details.get("phone_number") or data.get("recipient_phone") or "",
         "recipient_email": recipient_details.get("email") or data.get("recipient_email") or "",
         "service_name": service_name,
@@ -131,13 +182,22 @@ def _redeemed_sms_message(ctx: dict, audience: str) -> str:
     service = ctx["service_name"]
     date = ctx["appointment_date"]
     time = ctx["appointment_time"]
-    ref_part = f" Ref:{ctx['booking_reference']}" if ctx["booking_reference"] else ""
+    booking_number = ctx.get("booking_number") or ctx.get("booking_reference") or ""
+    ref_part = f" Ref:{booking_number}" if booking_number else ""
     if audience == "recipient":
-        name_first = (ctx["recipient_name"] or "").split()[0] or "Customer"
-        return f"USHSPA: Hi {name_first}, your gift booking for {service} on {date} at {time} is confirmed.{ref_part} Enjoy!"
+        username = ctx.get("username") or (ctx["recipient_name"] or "").split()[0] or "Customer"
+        if username == "Valued":
+            username = "Customer"
+        return (
+            f"USHSPA: \n"
+            f"Hi {username}, your gift booking for {service} on date {date} at {time}  is confirmed. \n"
+            f"Your booking number: {booking_number} Enjoy!"
+        )
     else:
         name_first = (ctx["sender_name"] or "").split()[0] or "Customer"
         recipient_first = (ctx["recipient_name"] or "").split()[0] or "Recipient"
+        if recipient_first == "Valued":
+            recipient_first = "Recipient"
         return (
             f"USHSPA: Hi {name_first}, your gift to {recipient_first} was redeemed — "
             f"{service} on {date} at {time}.{ref_part}"

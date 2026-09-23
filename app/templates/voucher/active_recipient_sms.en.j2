@@ -1,1 +1,10 @@
-{{ message_body }}
+{% if message_body %}{{ message_body }}{% else %}USHSPA:
+
+Hi {{ recipient_name }}, you received a gift from {{ gift_from if gift_from else sender_name }} !
+Message say:
+{{ gift_message if gift_message else "Happy birthday" }} 🎈 🙏🏻
+
+View the link below to receive your gift
+
+{{ gift_card_url }}
+{% endif %}

@@ -126,6 +126,7 @@ def build_default_registry() -> HandlerRegistry:
             registry.register(_alias)
 
     # ── Booking handlers ──────────────────────────────────────────────────────
+    from app.events.handlers.booking.booking_cancelled import BookingCancelledHandler
     from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
     from app.events.handlers.booking.booking_requested import BookingRequestedHandler  # handles booking.created
     from app.events.handlers.booking.payment_pending import BookingPaymentPendingHandler
@@ -134,6 +135,7 @@ def build_default_registry() -> HandlerRegistry:
     from app.events.handlers.booking.booking_payment_status_success import BookingPaymentStatusSuccessHandler
 
     for _h in [
+        BookingCancelledHandler(),
         BookingConfirmedHandler(),
         BookingRequestedHandler(),   # event_type = "booking.created"
         BookingPaymentPendingHandler(),
@@ -159,21 +161,6 @@ def build_default_registry() -> HandlerRegistry:
         PaymentFailedHandler(),
         PaymentRefundedHandler(),
         PaymentPendingHandler(),
-    ]:
-        registry.register(_h)
-        _alias_type = _h.event_type.replace(".", "_")
-        if _alias_type != _h.event_type:
-            _alias = _h.__class__()
-            _alias.event_type = _alias_type
-            registry.register(_alias)
-
-    # ── Loyalty handlers ──────────────────────────────────────────────────────
-    from app.events.handlers.loyalty.loyalty_rewarded import LoyaltyRewardedHandler
-    from app.events.handlers.loyalty.loyalty_redeemed import LoyaltyRedeemedHandler
-
-    for _h in [
-        LoyaltyRewardedHandler(),
-        LoyaltyRedeemedHandler(),
     ]:
         registry.register(_h)
         _alias_type = _h.event_type.replace(".", "_")

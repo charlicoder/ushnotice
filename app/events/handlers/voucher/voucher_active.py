@@ -60,6 +60,7 @@ def _build_voucher_context(data: dict) -> dict:
     public_token = data.get("public_token") or ""
     gift_card_url = _GIFT_CARD_PAGE_URL.format(public_token=public_token) if public_token else _APP_INSTALL_URL
 
+    gift_from = (data.get("gift_from") or sender_details.get("gift_from") or "").strip()
     sender_name = sender_details.get("name") or data.get("sender_name") or "A generous friend"
     recipient_name = recipient_details.get("name") or data.get("recipient_name") or "Valued Customer"
     service_name = service_data.get("name") or data.get("service_name") or "Spa Experience"
@@ -67,6 +68,7 @@ def _build_voucher_context(data: dict) -> dict:
 
     return {
         "voucher_id": str(data.get("id") or ""),
+        "voucher_number": str(data.get("voucher_number") or ""),
         "secret_code": str(data.get("secret_code") or ""),
         "public_token": public_token,
         "gift_card_url": gift_card_url,
@@ -75,6 +77,7 @@ def _build_voucher_context(data: dict) -> dict:
         "expire_date": expire_fmt,
         "expire_date_raw": expire_raw,
         "gift_message": data.get("gift_message") or "",
+        "gift_from": gift_from,
         "gift_template": data.get("gift_template") or "",
         "total_amount": str(data.get("total_amount") or ""),
         "total_duration": str(data.get("total_duration") or ""),
@@ -174,15 +177,29 @@ def _recipient_whatsapp_message(ctx: dict) -> str:
 
 
 def _recipient_sms_message(ctx: dict) -> str:
-    name_first = (ctx["recipient_name"] or "").split()[0] or "Customer"
-    sender = ctx["sender_name"] or "Someone special"
-    expire_part = f" Valid until {ctx['expire_date']}." if ctx["expire_date"] else ""
-    code_part = f" Code: {ctx['secret_code']}." if ctx["secret_code"] else ""
-    pass_part = f" Login pass: {ctx['recipient_password']}." if ctx.get("recipient_password") else ""
-    return (
-        f"USHSPA: Hi {name_first}, you received a gift from {sender}!{expire_part}{code_part}{pass_part} "
-        f"View: {ctx['gift_card_url']}"
-    )
+    recipient_name = ctx.get("recipient_name") or "Customer"
+    if recipient_name == "Valued Customer":
+        recipient_name = "Customer"
+    sender = ctx.get("gift_from") or ctx.get("sender_name") or "Someone special"
+    message = ctx.get("gift_message") or "Happy birthday"
+    if not message.endswith("🎈 🙏🏻") and not message.endswith("\U0001f388 \U0001f64f\U0001f3fb"):
+        message_line = f"{message} 🎈 🙏🏻"
+    else:
+        message_line = message
+    url = ctx.get("gift_card_url") or ""
+
+    lines = [
+        "USHSPA:",
+        "",
+        f"Hi {recipient_name}, you received a gift from {sender} !",
+        "Message say:",
+        message_line,
+        "",
+        "View the link below to receive your gift",
+        "",
+        url,
+    ]
+    return "\n".join(lines)
 
 
 def _recipient_email_subject(ctx: dict) -> str:
