@@ -86,9 +86,21 @@ class UshBookNPayClient:
         payment_for: str = "branch_service",
         payment_method: str = "card",
         status: str = "success",
+        country: str | None = None,
+        payment_id: str | None = None,
+        transaction_id: str | None = None,
+        invoice_id: str | None = None,
+        reference_id: str | None = None,
+        track_id: str | None = None,
+        transaction_status: str | None = None,
+        transaction_date: str | None = None,
+        payment_url: str | None = None,
         payment_data: dict | None = None,
         booking_data: dict | None = None,
         customer_data: dict | None = None,
+        created_by_user: str | None = None,
+        created_by_user_data: dict | None = None,
+        created_by: str | None = None,
         service_id: str | None = None,
         service_data: dict | None = None,
         branch_id: str | None = None,
@@ -111,9 +123,21 @@ class UshBookNPayClient:
             payment_for: Purpose — branch_service, home_service, gift_voucher, product_items.
             payment_method: Method — card, knet, apple_pay, etc.
             status: Payment status (default "success").
+            country: Country name or ISO code.
+            payment_id: Gateway payment ID.
+            transaction_id: Gateway transaction ID.
+            invoice_id: Gateway invoice ID.
+            reference_id: Bank/KNET reference ID.
+            track_id: Gateway track ID.
+            transaction_status: Raw or normalized transaction status.
+            transaction_date: Raw transaction timestamp.
+            payment_url: Gateway payment URL.
             payment_data: Full payment_data dict from the event.
             booking_data: Booking snapshot dict.
             customer_data: Customer snapshot dict.
+            created_by_user: User UUID/ID who initiated the booking/payment.
+            created_by_user_data: JSONB snapshot of creator user.
+            created_by: Backward-compat alias for created_by_user.
             service_id: Service UUID.
             service_data: Service snapshot dict.
             branch_id: Branch UUID.
@@ -134,6 +158,56 @@ class UshBookNPayClient:
         else:
             normalised_gw = None
 
+        # Resolve creator and creator snapshot data
+        _creator = (
+            created_by_user
+            or created_by
+            or meta.get("created_by_user")
+            or meta.get("created_by")
+            or customer_id
+        )
+        resolved_creator: str | None = str(_creator).strip() if _creator else None
+
+        _c_user_data = created_by_user_data or meta.get("created_by_user_data")
+        if isinstance(_c_user_data, dict) and _c_user_data:
+            resolved_creator_data: dict[str, Any] = dict(_c_user_data)
+            if resolved_creator and not resolved_creator_data.get("id"):
+                resolved_creator_data["id"] = resolved_creator
+        else:
+            _c_snapshot = customer_data or {}
+            resolved_creator_data = {
+                "id": resolved_creator or customer_id,
+                "name": _c_snapshot.get("name") or meta.get("customer_name") or "",
+                "phone": _c_snapshot.get("phone") or _c_snapshot.get("mobile") or meta.get("customer_mobile") or meta.get("customer_phone") or "",
+                "email": _c_snapshot.get("email") or meta.get("customer_email") or "",
+                "role": "customer" if (resolved_creator == customer_id or not resolved_creator) else "user",
+            }
+
+        # Build comprehensive payment_data dictionary preserving all raw fields
+        built_payment_data: dict[str, Any] = dict(payment_data) if isinstance(payment_data, dict) else {}
+        for k, v in [
+            ("payment_id", payment_id or meta.get("payment_id") or meta.get("transaction_id")),
+            ("transaction_id", transaction_id or meta.get("transaction_id")),
+            ("invoice_id", invoice_id or meta.get("invoice_id")),
+            ("reference_id", reference_id or meta.get("reference_id")),
+            ("track_id", track_id or meta.get("track_id")),
+            ("country", country or meta.get("country")),
+            ("transaction_date", transaction_date or meta.get("transaction_date")),
+            ("transaction_status", transaction_status or meta.get("transaction_status")),
+            ("payment_url", payment_url or meta.get("payment_url")),
+            ("payment_gateway", normalised_gw),
+            ("payment_provider", payment_provider),
+            ("payment_through", payment_through),
+            ("payment_method", payment_method),
+            ("invoice_reference", meta.get("invoice_reference")),
+            ("customer_reference", meta.get("customer_reference")),
+            ("authorization_id", meta.get("authorization_id")),
+            ("vat_amount", meta.get("vat_amount")),
+            ("created_date", meta.get("created_date")),
+        ]:
+            if v is not None and k not in built_payment_data:
+                built_payment_data[k] = v
+
         payload: dict[str, Any] = {
             # ── Required fields ────────────────────────────────────────────
             "customer_id": customer_id,
@@ -151,15 +225,16 @@ class UshBookNPayClient:
             "payment_gateway": normalised_gw,
             "payment_method": payment_method,
             # ── Invoice & transaction identifiers ──────────────────────────
-            "payment_id": meta.get("payment_id") or meta.get("transaction_id"),
-            "transaction_id": meta.get("transaction_id"),
-            "invoice_id": meta.get("invoice_id"),
+            "country": country or meta.get("country"),
+            "payment_id": payment_id or meta.get("payment_id") or meta.get("transaction_id"),
+            "transaction_id": transaction_id or meta.get("transaction_id") or payment_id,
+            "invoice_id": invoice_id or meta.get("invoice_id"),
             "invoice_value": meta.get("invoice_value") or total_amount,
-            "reference_id": meta.get("reference_id"),
-            "track_id": meta.get("track_id"),
-            "transaction_status": meta.get("transaction_status"),
-            "transaction_date": meta.get("transaction_date"),
-            "payment_url": meta.get("payment_url"),
+            "reference_id": reference_id or meta.get("reference_id"),
+            "track_id": track_id or meta.get("track_id"),
+            "transaction_status": transaction_status or meta.get("transaction_status"),
+            "transaction_date": transaction_date or meta.get("transaction_date"),
+            "payment_url": payment_url or meta.get("payment_url"),
             # ── Service & location ─────────────────────────────────────────
             "service_id": service_id,
             "service_data": service_data,
@@ -173,15 +248,12 @@ class UshBookNPayClient:
                 "mobile": meta.get("customer_mobile") or meta.get("customer_phone"),
                 "email": meta.get("customer_email"),
             },
+            # ── Creator ────────────────────────────────────────────────────
+            "created_by_user": resolved_creator,
+            "created_by_user_data": resolved_creator_data,
+            "created_by": resolved_creator,
             # ── Raw gateway identifiers → payment_data JSONB ───────────────
-            "payment_data": {k: v for k, v in {
-                "invoice_reference": meta.get("invoice_reference"),
-                "customer_reference": meta.get("customer_reference"),
-                "authorization_id": meta.get("authorization_id"),
-                "vat_amount": meta.get("vat_amount"),
-                "created_date": meta.get("created_date"),
-                "raw_payment_data": meta,
-            }.items() if v is not None},
+            "payment_data": built_payment_data,
         }
         return await self._client.post(
             "/api/v1/payments/",
@@ -201,6 +273,20 @@ class UshBookNPayClient:
         payment_method: str = "",
         payment_type: str = "",
         payment_provider: str = "",
+        payment_gateway: str | None = None,
+        reference_id: str | None = None,
+        track_id: str | None = None,
+        country: str | None = None,
+        payment_id: str | None = None,
+        transaction_id: str | None = None,
+        invoice_id: str | None = None,
+        transaction_date: str | None = None,
+        transaction_status: str | None = None,
+        created_by: str | None = None,
+        created_by_user: str | None = None,
+        created_by_user_data: dict | None = None,
+        payment_url: str | None = None,
+        payment_data: dict | None = None,
         customer_data: dict | None = None,
         product_order_items: list | None = None,
         correlation_id: str | None = None,
@@ -219,6 +305,20 @@ class UshBookNPayClient:
             payment_method:      How the customer paid: card, knet, cash, apple_pay, etc.
             payment_type:        Payment channel: gateway, desk, gift_voucher, etc.
             payment_provider:    Provider: MyFatoorah, DirectLink, Deema, Other.
+            payment_gateway:     Gateway network: KNET, TAP, Other.
+            reference_id:        Bank/KNET reference ID.
+            track_id:            Gateway track ID.
+            country:             Country name or ISO code.
+            payment_id:          Gateway payment ID.
+            transaction_id:      Gateway transaction ID.
+            invoice_id:          Gateway invoice ID.
+            transaction_date:    Raw transaction date from gateway.
+            transaction_status:  Raw transaction status from gateway.
+            created_by:          UUID of user requesting order (backward-compat alias).
+            created_by_user:     UUID of user requesting order.
+            created_by_user_data: JSONB snapshot of creator user.
+            payment_url:         Payment URL from gateway.
+            payment_data:        Full gateway payload / extra data (JSONB).
             customer_data:       Customer snapshot dict {id, name, phone, contact_number}.
             product_order_items: Items list from the SQS event (snapshot at order time).
             correlation_id:      Propagated tracing ID.
@@ -236,10 +336,21 @@ class UshBookNPayClient:
         else:
             normalised_provider = "Other"
 
+        # Normalise payment_gateway to spec values
+        normalised_gw = None
+        if payment_gateway:
+            _gw_raw = payment_gateway.upper()
+            if "KNET" in _gw_raw or "K-NET" in _gw_raw:
+                normalised_gw = "KNET"
+            elif "TAP" in _gw_raw:
+                normalised_gw = "TAP"
+            else:
+                normalised_gw = "Other"
+
         # Normalise payment_method
         _method = (payment_method or "").strip().lower()
         if not _method or _method in ("", "unknown"):
-            _method = "card"
+            _method = "knet" if normalised_gw == "KNET" else "card"
 
         # Normalise payment_through from payment_type
         _type = (payment_type or "").strip().lower()
@@ -258,6 +369,20 @@ class UshBookNPayClient:
             "phone": _customer_data.get("phone") or _customer_data.get("contact_number", ""),
         }
 
+        # Resolve creator and creator data snapshot
+        resolved_creator = str(created_by_user or created_by).strip() if (created_by_user or created_by) else None
+        if isinstance(created_by_user_data, dict) and created_by_user_data:
+            resolved_creator_data: dict[str, Any] = dict(created_by_user_data)
+            if resolved_creator and not resolved_creator_data.get("id"):
+                resolved_creator_data["id"] = resolved_creator
+        else:
+            resolved_creator_data = {
+                "id": resolved_creator or customer_id,
+                "name": built_customer_data.get("name", ""),
+                "phone": built_customer_data.get("phone", ""),
+                "role": "customer" if (resolved_creator == customer_id or not resolved_creator) else "user",
+            }
+
         payload: dict[str, Any] = {
             # ── Required fields ──────────────────────────────────────
             "customer_id": customer_id,
@@ -273,6 +398,21 @@ class UshBookNPayClient:
             "payment_provider": normalised_provider,
             "payment_through": normalised_through,
             "payment_method": _method,
+            "payment_gateway": normalised_gw,
+            # ── Invoice & transaction identifiers ────────────────────
+            "reference_id": reference_id,
+            "track_id": track_id,
+            "country": country,
+            "payment_id": payment_id,
+            "transaction_id": transaction_id,
+            "invoice_id": invoice_id,
+            "transaction_date": transaction_date,
+            "transaction_status": transaction_status,
+            "created_by": resolved_creator,
+            "created_by_user": resolved_creator,
+            "created_by_user_data": resolved_creator_data,
+            "payment_url": payment_url,
+            "payment_data": payment_data or {},
             # ── Customer snapshot ────────────────────────────────────
             "customer_data": built_customer_data,
         }

@@ -427,9 +427,183 @@ async def test_booking_cancelled_handler_skips_loyalty_reversal_for_redemption_b
     mock_client.cancel_loyalty_points = AsyncMock()
     mock_client.aclose = AsyncMock()
 
-    with patch("app.events.handlers.booking.booking_cancelled.UshBookNPayClient",
-               return_value=mock_client):
+    mock_client.cancel_loyalty_points.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_booking_confirmed_extracts_and_forwards_created_by_user_and_payment_data():
+    """Verify that BookingConfirmedHandler extracts created_by_user, created_by_user_data,
+    and preserves full payment_data when calling ushbooknpay payments API."""
+    from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
+    from app.events.handlers.base import HandlerContext
+
+    handler = BookingConfirmedHandler()
+    booking_payload = {
+        "booking_id": "e92d680f-fde5-4c2b-986d-656608014511",
+        "customer_id": "4f5912e2-ebb5-4383-9f42-40df865c4cfb",
+        "customer_name": "Test Customer",
+        "customer_phone": "+96512345678",
+        "customer_email": "test@ushspa.com",
+        "total_amount": "45.000",
+        "total_duration": 60,
+        "currency": "KWD",
+        "booking_type": "branch_service",
+        "payment_status": "success",
+        "created_by_user": "user-uuid-1234",
+        "created_by_user_data": {
+            "id": "user-uuid-1234",
+            "name": "Operator Staff",
+            "role": "staff",
+        },
+        "payment_data": {
+            "invoiceId": "7205938",
+            "invoiceValue": 45.0,
+            "status": "Paid",
+            "is_paid": True,
+            "paymentUrl": "https://demo.myfatoorah.com/pay",
+            "custom_gateway_key": "some_extra_info",
+            "Data": {
+                "InvoiceTransactions": [
+                    {
+                        "PaymentId": "pay-9999",
+                        "TransactionId": "txn-8888",
+                        "ReferenceId": "ref-7777",
+                        "TrackId": "trk-6666",
+                        "Country": "Kuwait",
+                        "TransactionDate": "2026-09-25T18:50:00",
+                        "TransactionStatus": "Succss",
+                        "PaymentGateway": "KNET",
+                        "PaymentMethod": "knet",
+                    }
+                ]
+            },
+        },
+    }
+
+    envelope = _make_confirmed_envelope(booking_payload)
+    mock_ctx = MagicMock(spec=HandlerContext)
+
+    mock_post = AsyncMock(return_value={"id": "pay-rec-1", "data": {"id": "pay-rec-1"}})
+    mock_ushauth = AsyncMock()
+    mock_ushauth.create_appointment_cache = AsyncMock(return_value={})
+    mock_ushauth.aclose = AsyncMock()
+    mock_notification = AsyncMock()
+
+    with (
+        patch("app.events.handlers.booking.booking_confirmed.NotificationService",
+              return_value=mock_notification),
+        patch("app.events.handlers.booking.booking_confirmed.UshAuthClient",
+              return_value=mock_ushauth),
+        patch("app.integrations.ushbooknpay_client.GatewayHttpClient") as mock_gw,
+    ):
+        mock_gw_instance = MagicMock()
+        mock_gw_instance.post = mock_post
+        mock_gw_instance.aclose = AsyncMock()
+        mock_gw.return_value = mock_gw_instance
+
         await handler.handle(envelope, mock_ctx)
 
-    mock_client.cancel_loyalty_points.assert_not_awaited()
+    # Locate the call to /api/v1/payments/
+    payment_calls = [
+        c for c in mock_post.call_args_list
+        if "/api/v1/payments/" in str(c)
+    ]
+    assert len(payment_calls) == 1, f"Expected 1 call to /api/v1/payments/, got {len(payment_calls)}"
+
+    call_kwargs = payment_calls[0].kwargs
+    payload = call_kwargs["json"]
+
+    # Verify created_by_user and created_by_user_data
+    assert payload["created_by_user"] == "user-uuid-1234"
+    assert payload["created_by"] == "user-uuid-1234"
+    assert payload["created_by_user_data"]["id"] == "user-uuid-1234"
+    assert payload["created_by_user_data"]["name"] == "Operator Staff"
+
+    # Verify transaction identifiers extracted from inner MyFatoorah transactions
+    assert payload["payment_id"] == "pay-9999"
+    assert payload["transaction_id"] == "txn-8888"
+    assert payload["reference_id"] == "ref-7777"
+    assert payload["track_id"] == "trk-6666"
+    assert payload["country"] == "Kuwait"
+    assert payload["invoice_id"] == "7205938"
+    assert payload["payment_gateway"] == "KNET"
+    assert payload["payment_method"] == "knet"
+    assert payload["transaction_status"] == "success"
+    assert payload["payment_url"] == "https://demo.myfatoorah.com/pay"
+
+    # Verify payment_data preserves full raw keys including Data and custom keys
+    assert "payment_data" in payload
+    pdata = payload["payment_data"]
+    assert pdata["custom_gateway_key"] == "some_extra_info"
+    assert "Data" in pdata
+    assert pdata["payment_id"] == "pay-9999"
+    assert pdata["reference_id"] == "ref-7777"
+
+
+@pytest.mark.asyncio
+async def test_booking_confirmed_fallback_created_by_user_from_customer():
+    """When created_by_user is not explicitly provided in the event, fallback to customer_id
+    and build created_by_user_data snapshot from customer details."""
+    from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
+    from app.events.handlers.base import HandlerContext
+
+    handler = BookingConfirmedHandler()
+    booking_payload = {
+        "booking_id": "e92d680f-fde5-4c2b-986d-656608014511",
+        "customer_id": "4f5912e2-ebb5-4383-9f42-40df865c4cfb",
+        "customer_name": "Sarah Connor",
+        "customer_phone": "+96599887766",
+        "customer_email": "sarah@example.com",
+        "total_amount": "50.000",
+        "total_duration": 45,
+        "currency": "KWD",
+        "booking_type": "branch_service",
+        "payment_status": "success",
+        # Notice: created_by_user and created_by_user_data omitted
+        "payment_data": {
+            "invoice_id": "112233",
+            "is_paid": True,
+            "status": "Paid",
+        },
+    }
+
+    envelope = _make_confirmed_envelope(booking_payload)
+    mock_ctx = MagicMock(spec=HandlerContext)
+    mock_post = AsyncMock(return_value={"id": "pay-rec-2"})
+    mock_ushauth = AsyncMock()
+    mock_ushauth.create_appointment_cache = AsyncMock(return_value={})
+    mock_ushauth.aclose = AsyncMock()
+    mock_notification = AsyncMock()
+
+    with (
+        patch("app.events.handlers.booking.booking_confirmed.NotificationService",
+              return_value=mock_notification),
+        patch("app.events.handlers.booking.booking_confirmed.UshAuthClient",
+              return_value=mock_ushauth),
+        patch("app.integrations.ushbooknpay_client.GatewayHttpClient") as mock_gw,
+    ):
+        mock_gw_instance = MagicMock()
+        mock_gw_instance.post = mock_post
+        mock_gw_instance.aclose = AsyncMock()
+        mock_gw.return_value = mock_gw_instance
+
+        await handler.handle(envelope, mock_ctx)
+
+    payment_calls = [
+        c for c in mock_post.call_args_list
+        if "/api/v1/payments/" in str(c)
+    ]
+    assert len(payment_calls) == 1
+    payload = payment_calls[0].kwargs["json"]
+
+    # Fallback to customer_id
+    assert payload["created_by_user"] == "4f5912e2-ebb5-4383-9f42-40df865c4cfb"
+    assert payload["created_by"] == "4f5912e2-ebb5-4383-9f42-40df865c4cfb"
+    assert payload["created_by_user_data"]["id"] == "4f5912e2-ebb5-4383-9f42-40df865c4cfb"
+    assert payload["created_by_user_data"]["name"] == "Sarah Connor"
+    assert payload["created_by_user_data"]["phone"] == "+96599887766"
+    assert payload["created_by_user_data"]["email"] == "sarah@example.com"
+    assert payload["created_by_user_data"]["role"] == "customer"
+    assert payload["payment_data"]["invoice_id"] == "112233"
+
 

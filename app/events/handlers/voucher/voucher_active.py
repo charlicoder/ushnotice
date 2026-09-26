@@ -359,7 +359,43 @@ class VoucherActiveHandler:
             recipient_data: dict | None = data.get("recipient_data") or None
 
             # ── Creator ────────────────────────────────────────────────────
-            created_by: str | None = str(data.get("created_by") or "") or None
+            raw_created_by = (
+                data.get("created_by_user")
+                or data.get("created_by")
+                or sender_id
+                or ""
+            )
+            created_by_user: str | None = str(raw_created_by).strip() if raw_created_by and str(raw_created_by).strip() else None
+
+            raw_creator_data = (
+                data.get("created_by_user_data")
+                or data.get("user_data")
+            )
+            if isinstance(raw_creator_data, dict) and raw_creator_data:
+                created_by_user_data: dict[str, Any] = dict(raw_creator_data)
+                if created_by_user and not created_by_user_data.get("id"):
+                    created_by_user_data["id"] = created_by_user
+            else:
+                created_by_user_data = {
+                    "id": created_by_user or sender_id or "",
+                    "name": sender_details.get("name") or "",
+                    "phone": sender_details.get("phone_number") or sender_details.get("mobile") or "",
+                    "email": sender_details.get("email") or "",
+                    "role": "customer" if (created_by_user == sender_id or not created_by_user) else "user",
+                }
+
+            built_payment_data: dict[str, Any] = dict(payment_data) if isinstance(payment_data, dict) else {}
+            for k, v in [
+                ("payment_id", payment_id),
+                ("invoice_id", invoice_id),
+                ("invoice_value", invoice_value),
+                ("payment_url", payment_url),
+                ("payment_gateway", normalised_gw),
+                ("invoice_reference", payment_data.get("invoiceReference") or payment_data.get("InvoiceReference") or payment_data.get("invoice_reference")),
+                ("customer_reference", payment_data.get("customerReference") or payment_data.get("CustomerReference") or payment_data.get("customer_reference")),
+            ]:
+                if v is not None and k not in built_payment_data:
+                    built_payment_data[k] = v
 
             payload: dict[str, Any] = {
                 # ── Required fields ────────────────────────────────────────
@@ -442,8 +478,10 @@ class VoucherActiveHandler:
                     ),
                     "email": sender_details.get("email") or "",
                 },
-                # ── Audit ──────────────────────────────────────────────────
-                "created_by": created_by,
+                # ── Audit / Creator ────────────────────────────────────────
+                "created_by": created_by_user,
+                "created_by_user": created_by_user,
+                "created_by_user_data": created_by_user_data,
                 # ── Voucher data snapshot ──────────────────────────────────
                 "voucher_data": {
                     "voucher_id": voucher_id,
@@ -459,19 +497,7 @@ class VoucherActiveHandler:
                     "price_for_extra_time": price_for_extra_time,
                 },
                 # ── Raw gateway data → payment_data JSONB ──────────────────
-                "payment_data": {k: v for k, v in {
-                    "invoice_reference": str(
-                        payment_data.get("invoiceReference")
-                        or payment_data.get("InvoiceReference")
-                        or ""
-                    ),
-                    "customer_reference": str(
-                        payment_data.get("customerReference")
-                        or payment_data.get("CustomerReference")
-                        or ""
-                    ),
-                    "raw_gateway_response": payment_data or None,
-                }.items() if v},
+                "payment_data": built_payment_data,
             }
 
             await client._client.post(

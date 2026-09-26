@@ -150,6 +150,139 @@ class ShopOrderCreatedHandler:
             )
             return
 
+        # ── Extract payment transaction metadata & identifiers ────────────────
+        payment_data: dict = data.get("payment_data") if isinstance(data.get("payment_data"), dict) else {}
+        inner_data: dict = (
+            payment_data.get("data") if isinstance(payment_data.get("data"), dict)
+            else payment_data.get("Data") if isinstance(payment_data.get("Data"), dict)
+            else {}
+        )
+        txns: list = (
+            inner_data.get("InvoiceTransactions")
+            or payment_data.get("InvoiceTransactions")
+            or payment_data.get("invoice_transactions")
+            or []
+        )
+        first_txn: dict = txns[0] if isinstance(txns, list) and len(txns) > 0 and isinstance(txns[0], dict) else {}
+
+        reference_id: str | None = (
+            str(data.get("reference_id")).strip() if data.get("reference_id") is not None and str(data.get("reference_id")).strip()
+            else str(first_txn.get("ReferenceId")).strip() if first_txn.get("ReferenceId") is not None and str(first_txn.get("ReferenceId")).strip()
+            else str(first_txn.get("reference_id")).strip() if first_txn.get("reference_id") is not None and str(first_txn.get("reference_id")).strip()
+            else str(payment_data.get("referenceId")).strip() if payment_data.get("referenceId") is not None and str(payment_data.get("referenceId")).strip()
+            else str(payment_data.get("reference_id")).strip() if payment_data.get("reference_id") is not None and str(payment_data.get("reference_id")).strip()
+            else None
+        )
+
+        track_id: str | None = (
+            str(data.get("track_id")).strip() if data.get("track_id") is not None and str(data.get("track_id")).strip()
+            else str(first_txn.get("TrackId")).strip() if first_txn.get("TrackId") is not None and str(first_txn.get("TrackId")).strip()
+            else str(first_txn.get("track_id")).strip() if first_txn.get("track_id") is not None and str(first_txn.get("track_id")).strip()
+            else str(payment_data.get("trackId")).strip() if payment_data.get("trackId") is not None and str(payment_data.get("trackId")).strip()
+            else str(payment_data.get("track_id")).strip() if payment_data.get("track_id") is not None and str(payment_data.get("track_id")).strip()
+            else str(payment_data.get("trace_id")).strip() if payment_data.get("trace_id") is not None and str(payment_data.get("trace_id")).strip()
+            else None
+        )
+
+        country: str | None = (
+            str(data.get("country")).strip() if data.get("country") is not None and str(data.get("country")).strip()
+            else str(first_txn.get("Country")).strip() if first_txn.get("Country") is not None and str(first_txn.get("Country")).strip()
+            else str(first_txn.get("country")).strip() if first_txn.get("country") is not None and str(first_txn.get("country")).strip()
+            else str(payment_data.get("country")).strip() if payment_data.get("country") is not None and str(payment_data.get("country")).strip()
+            else str(inner_data.get("Country")).strip() if inner_data.get("Country") is not None and str(inner_data.get("Country")).strip()
+            else None
+        )
+
+        payment_id: str | None = (
+            str(data.get("payment_id")).strip() if data.get("payment_id") is not None and str(data.get("payment_id")).strip()
+            else str(first_txn.get("PaymentId")).strip() if first_txn.get("PaymentId") is not None and str(first_txn.get("PaymentId")).strip()
+            else str(first_txn.get("payment_id")).strip() if first_txn.get("payment_id") is not None and str(first_txn.get("payment_id")).strip()
+            else str(payment_data.get("paymentId")).strip() if payment_data.get("paymentId") is not None and str(payment_data.get("paymentId")).strip()
+            else str(payment_data.get("payment_id")).strip() if payment_data.get("payment_id") is not None and str(payment_data.get("payment_id")).strip()
+            else str(inner_data.get("PaymentId")).strip() if inner_data.get("PaymentId") is not None and str(inner_data.get("PaymentId")).strip()
+            else None
+        )
+
+        transaction_id: str | None = (
+            str(data.get("transaction_id")).strip() if data.get("transaction_id") is not None and str(data.get("transaction_id")).strip()
+            else str(first_txn.get("TransactionId")).strip() if first_txn.get("TransactionId") is not None and str(first_txn.get("TransactionId")).strip()
+            else str(first_txn.get("transaction_id")).strip() if first_txn.get("transaction_id") is not None and str(first_txn.get("transaction_id")).strip()
+            else str(payment_data.get("transactionId")).strip() if payment_data.get("transactionId") is not None and str(payment_data.get("transactionId")).strip()
+            else str(payment_data.get("transaction_id")).strip() if payment_data.get("transaction_id") is not None and str(payment_data.get("transaction_id")).strip()
+            else payment_id
+        )
+
+        invoice_id: str | None = (
+            str(data.get("invoice_id")).strip() if data.get("invoice_id") is not None and str(data.get("invoice_id")).strip()
+            else str(payment_data.get("invoiceId")).strip() if payment_data.get("invoiceId") is not None and str(payment_data.get("invoiceId")).strip()
+            else str(payment_data.get("invoice_id")).strip() if payment_data.get("invoice_id") is not None and str(payment_data.get("invoice_id")).strip()
+            else str(inner_data.get("InvoiceId")).strip() if inner_data.get("InvoiceId") is not None and str(inner_data.get("InvoiceId")).strip()
+            else str(inner_data.get("invoice_id")).strip() if inner_data.get("invoice_id") is not None and str(inner_data.get("invoice_id")).strip()
+            else None
+        )
+
+        transaction_date: str | None = (
+            str(data.get("transaction_date")).strip() if data.get("transaction_date") is not None and str(data.get("transaction_date")).strip()
+            else str(first_txn.get("TransactionDate")).strip() if first_txn.get("TransactionDate") is not None and str(first_txn.get("TransactionDate")).strip()
+            else str(first_txn.get("transaction_date")).strip() if first_txn.get("transaction_date") is not None and str(first_txn.get("transaction_date")).strip()
+            else str(payment_data.get("transactionDate")).strip() if payment_data.get("transactionDate") is not None and str(payment_data.get("transactionDate")).strip()
+            else str(payment_data.get("transaction_date")).strip() if payment_data.get("transaction_date") is not None and str(payment_data.get("transaction_date")).strip()
+            else str(inner_data.get("CreatedDate")).strip() if inner_data.get("CreatedDate") is not None and str(inner_data.get("CreatedDate")).strip()
+            else None
+        )
+
+        payment_gateway: str | None = (
+            str(data.get("payment_gateway")).strip() if data.get("payment_gateway") is not None and str(data.get("payment_gateway")).strip()
+            else str(first_txn.get("PaymentGateway")).strip() if first_txn.get("PaymentGateway") is not None and str(first_txn.get("PaymentGateway")).strip()
+            else str(first_txn.get("payment_gateway")).strip() if first_txn.get("payment_gateway") is not None and str(first_txn.get("payment_gateway")).strip()
+            else str(payment_data.get("paymentGateway")).strip() if payment_data.get("paymentGateway") is not None and str(payment_data.get("paymentGateway")).strip()
+            else payment_method
+            if payment_method and payment_method.lower() in ("knet", "tap")
+            else None
+        )
+
+        transaction_status: str | None = (
+            str(data.get("transaction_status")).strip() if data.get("transaction_status") is not None and str(data.get("transaction_status")).strip()
+            else str(first_txn.get("TransactionStatus")).strip() if first_txn.get("TransactionStatus") is not None and str(first_txn.get("TransactionStatus")).strip()
+            else str(first_txn.get("transaction_status")).strip() if first_txn.get("transaction_status") is not None and str(first_txn.get("transaction_status")).strip()
+            else str(payment_data.get("status")).strip() if payment_data.get("status") is not None and str(payment_data.get("status")).strip()
+            else str(inner_data.get("InvoiceStatus")).strip() if inner_data.get("InvoiceStatus") is not None and str(inner_data.get("InvoiceStatus")).strip()
+            else None
+        )
+
+        payment_url: str | None = (
+            str(data.get("payment_url")).strip() if data.get("payment_url") is not None and str(data.get("payment_url")).strip()
+            else str(payment_data.get("paymentUrl")).strip() if payment_data.get("paymentUrl") is not None and str(payment_data.get("paymentUrl")).strip()
+            else str(payment_data.get("payment_url")).strip() if payment_data.get("payment_url") is not None and str(payment_data.get("payment_url")).strip()
+            else str(inner_data.get("PaymentURL")).strip() if inner_data.get("PaymentURL") is not None and str(inner_data.get("PaymentURL")).strip()
+            else None
+        )
+
+        raw_created_by = (
+            data.get("created_by_user")
+            or data.get("created_by")
+            or data.get("order_requested_by_user")
+            or customer_id
+            or inner_data.get("UserDefinedField")
+            or ""
+        )
+        created_by: str | None = None
+        if raw_created_by:
+            try:
+                import uuid as _uuid
+                created_by = str(_uuid.UUID(str(raw_created_by).strip()))
+            except (ValueError, TypeError):
+                created_by = str(raw_created_by).strip() or None
+
+        raw_user_data = (
+            data.get("created_by_user_data")
+            or data.get("order_requested_by_user_data")
+            or payment_data.get("created_by_user_data")
+        )
+        created_by_user_data: dict | None = (
+            dict(raw_user_data) if isinstance(raw_user_data, dict) and raw_user_data else None
+        )
+
         # ── 1. Create payment record ──────────────────────────────────────────
         booknpay = UshBookNPayClient()
         try:
@@ -162,16 +295,36 @@ class ShopOrderCreatedHandler:
                 payment_method=payment_method,
                 payment_type=payment_type,
                 payment_provider=payment_provider,
+                payment_gateway=payment_gateway,
+                reference_id=reference_id,
+                track_id=track_id,
+                country=country,
+                payment_id=payment_id,
+                transaction_id=transaction_id,
+                invoice_id=invoice_id,
+                transaction_date=transaction_date,
+                transaction_status=transaction_status,
+                created_by=created_by,
+                created_by_user=created_by,
+                created_by_user_data=created_by_user_data,
+                payment_url=payment_url,
+                payment_data=payment_data,
                 customer_data=customer_data,
                 product_order_items=items,
                 correlation_id=correlation_id,
             )
-            payment_id = (payment_response or {}).get("id") or "?"
+            res_data = (payment_response or {}).get("data")
+            payment_id_logged = (
+                (res_data.get("id") if isinstance(res_data, dict) else None)
+                or (payment_response or {}).get("id")
+                or payment_id
+                or "?"
+            )
             logger.info(
                 "shop_order_payment_record_created",
                 order_id=order_id,
                 order_number=order_number,
-                payment_id=payment_id,
+                payment_id=payment_id_logged,
                 event_id=correlation_id,
             )
         except Exception as exc:

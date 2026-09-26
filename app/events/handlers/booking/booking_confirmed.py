@@ -428,8 +428,32 @@ class BookingConfirmedHandler:
             try:
                 booknpay_client = UshBookNPayClient()
                 pricing: dict = data.get("pricing") or {}
+                raw_payment_data: dict = (
+                    data.get("payment_data")
+                    if isinstance(data.get("payment_data"), dict)
+                    else {}
+                )
+                inner_data: dict = (
+                    raw_payment_data.get("data") if isinstance(raw_payment_data.get("data"), dict)
+                    else raw_payment_data.get("Data") if isinstance(raw_payment_data.get("Data"), dict)
+                    else {}
+                )
+                txns: list = (
+                    inner_data.get("InvoiceTransactions")
+                    or raw_payment_data.get("InvoiceTransactions")
+                    or raw_payment_data.get("invoice_transactions")
+                    or []
+                )
+                first_txn: dict = (
+                    txns[0]
+                    if isinstance(txns, list) and len(txns) > 0 and isinstance(txns[0], dict)
+                    else {}
+                )
+
                 total_amount: str = (
-                    str(payment_data.get("invoice_value") or "")
+                    str(raw_payment_data.get("invoice_value") or "")
+                    or str(raw_payment_data.get("InvoiceValue") or "")
+                    or str(raw_payment_data.get("invoiceValue") or "")
                     or str(data.get("total_amount") or "")
                     or str(pricing.get("total") or "0")
                 )
@@ -438,12 +462,8 @@ class BookingConfirmedHandler:
                     or pricing.get("currency")
                     or "KWD"
                 )
-                payment_gateway: str = str(
-                    payment_data.get("payment_gateway") or "myfatoorah"
-                )
-                meta = payment_data or {}
 
-                # Resolve total_duration from event data (required by new payment model)
+                # Resolve total_duration from event data (required by payment model)
                 total_duration: int = int(
                     data.get("total_duration")
                     or data.get("duration_minutes")
@@ -452,25 +472,123 @@ class BookingConfirmedHandler:
                     or 0
                 )
 
-                # Normalise payment_provider to new enum values
-                _raw_provider = str(meta.get("provider") or meta.get("payment_provider") or "myfatoorah").lower()
-                if "fatoorah" in _raw_provider:
-                    payment_provider = "MyFatoorah"
-                elif "directlink" in _raw_provider or "direct" in _raw_provider:
-                    payment_provider = "DirectLink"
-                elif "deema" in _raw_provider:
-                    payment_provider = "Deema"
-                else:
-                    payment_provider = "MyFatoorah"
-
                 # Normalise payment_for based on booking type
                 if booking_type in ("home_service", "home"):
                     payment_for = "home_service"
                 else:
                     payment_for = "branch_service"
 
+                # Extract and resolve payment identifiers
+                reference_id: str | None = (
+                    (str(data.get("reference_id")).strip() if data.get("reference_id") is not None and str(data.get("reference_id")).strip() else None)
+                    or (str(first_txn.get("ReferenceId")).strip() if first_txn.get("ReferenceId") is not None and str(first_txn.get("ReferenceId")).strip() else None)
+                    or (str(first_txn.get("reference_id")).strip() if first_txn.get("reference_id") is not None and str(first_txn.get("reference_id")).strip() else None)
+                    or (str(raw_payment_data.get("referenceId")).strip() if raw_payment_data.get("referenceId") is not None and str(raw_payment_data.get("referenceId")).strip() else None)
+                    or (str(raw_payment_data.get("reference_id")).strip() if raw_payment_data.get("reference_id") is not None and str(raw_payment_data.get("reference_id")).strip() else None)
+                    or (str(raw_payment_data.get("invoice_reference")).strip() if raw_payment_data.get("invoice_reference") is not None and str(raw_payment_data.get("invoice_reference")).strip() else None)
+                    or (str(inner_data.get("ReferenceId")).strip() if inner_data.get("ReferenceId") is not None and str(inner_data.get("ReferenceId")).strip() else None)
+                    or None
+                )
+
+                track_id: str | None = (
+                    (str(data.get("track_id")).strip() if data.get("track_id") is not None and str(data.get("track_id")).strip() else None)
+                    or (str(first_txn.get("TrackId")).strip() if first_txn.get("TrackId") is not None and str(first_txn.get("TrackId")).strip() else None)
+                    or (str(first_txn.get("track_id")).strip() if first_txn.get("track_id") is not None and str(first_txn.get("track_id")).strip() else None)
+                    or (str(raw_payment_data.get("trackId")).strip() if raw_payment_data.get("trackId") is not None and str(raw_payment_data.get("trackId")).strip() else None)
+                    or (str(raw_payment_data.get("track_id")).strip() if raw_payment_data.get("track_id") is not None and str(raw_payment_data.get("track_id")).strip() else None)
+                    or (str(raw_payment_data.get("trace_id")).strip() if raw_payment_data.get("trace_id") is not None and str(raw_payment_data.get("trace_id")).strip() else None)
+                    or (str(inner_data.get("TrackId")).strip() if inner_data.get("TrackId") is not None and str(inner_data.get("TrackId")).strip() else None)
+                    or None
+                )
+
+                country: str | None = (
+                    (str(data.get("country")).strip() if data.get("country") is not None and str(data.get("country")).strip() else None)
+                    or (str(first_txn.get("Country")).strip() if first_txn.get("Country") is not None and str(first_txn.get("Country")).strip() else None)
+                    or (str(first_txn.get("country")).strip() if first_txn.get("country") is not None and str(first_txn.get("country")).strip() else None)
+                    or (str(raw_payment_data.get("country")).strip() if raw_payment_data.get("country") is not None and str(raw_payment_data.get("country")).strip() else None)
+                    or (str(inner_data.get("Country")).strip() if inner_data.get("Country") is not None and str(inner_data.get("Country")).strip() else None)
+                    or None
+                )
+
+                payment_id: str | None = (
+                    (str(data.get("payment_id")).strip() if data.get("payment_id") is not None and str(data.get("payment_id")).strip() else None)
+                    or (str(first_txn.get("PaymentId")).strip() if first_txn.get("PaymentId") is not None and str(first_txn.get("PaymentId")).strip() else None)
+                    or (str(first_txn.get("payment_id")).strip() if first_txn.get("payment_id") is not None and str(first_txn.get("payment_id")).strip() else None)
+                    or (str(raw_payment_data.get("paymentId")).strip() if raw_payment_data.get("paymentId") is not None and str(raw_payment_data.get("paymentId")).strip() else None)
+                    or (str(raw_payment_data.get("payment_id")).strip() if raw_payment_data.get("payment_id") is not None and str(raw_payment_data.get("payment_id")).strip() else None)
+                    or (str(inner_data.get("PaymentId")).strip() if inner_data.get("PaymentId") is not None and str(inner_data.get("PaymentId")).strip() else None)
+                    or (str(first_txn.get("TransactionId")).strip() if first_txn.get("TransactionId") is not None and str(first_txn.get("TransactionId")).strip() else None)
+                    or (str(raw_payment_data.get("transactionId")).strip() if raw_payment_data.get("transactionId") is not None and str(raw_payment_data.get("transactionId")).strip() else None)
+                    or (str(raw_payment_data.get("transaction_id")).strip() if raw_payment_data.get("transaction_id") is not None and str(raw_payment_data.get("transaction_id")).strip() else None)
+                    or (str(raw_payment_data.get("invoice_id")).strip() if raw_payment_data.get("invoice_id") is not None and str(raw_payment_data.get("invoice_id")).strip() else None)
+                    or (str(raw_payment_data.get("invoiceId")).strip() if raw_payment_data.get("invoiceId") is not None and str(raw_payment_data.get("invoiceId")).strip() else None)
+                    or None
+                )
+
+                transaction_id: str | None = (
+                    (str(data.get("transaction_id")).strip() if data.get("transaction_id") is not None and str(data.get("transaction_id")).strip() else None)
+                    or (str(first_txn.get("TransactionId")).strip() if first_txn.get("TransactionId") is not None and str(first_txn.get("TransactionId")).strip() else None)
+                    or (str(first_txn.get("transaction_id")).strip() if first_txn.get("transaction_id") is not None and str(first_txn.get("transaction_id")).strip() else None)
+                    or (str(raw_payment_data.get("transactionId")).strip() if raw_payment_data.get("transactionId") is not None and str(raw_payment_data.get("transactionId")).strip() else None)
+                    or (str(raw_payment_data.get("transaction_id")).strip() if raw_payment_data.get("transaction_id") is not None and str(raw_payment_data.get("transaction_id")).strip() else None)
+                    or payment_id
+                )
+
+                invoice_id: str | None = (
+                    (str(data.get("invoice_id")).strip() if data.get("invoice_id") is not None and str(data.get("invoice_id")).strip() else None)
+                    or (str(raw_payment_data.get("invoiceId")).strip() if raw_payment_data.get("invoiceId") is not None and str(raw_payment_data.get("invoiceId")).strip() else None)
+                    or (str(raw_payment_data.get("invoice_id")).strip() if raw_payment_data.get("invoice_id") is not None and str(raw_payment_data.get("invoice_id")).strip() else None)
+                    or (str(raw_payment_data.get("InvoiceId")).strip() if raw_payment_data.get("InvoiceId") is not None and str(raw_payment_data.get("InvoiceId")).strip() else None)
+                    or (str(inner_data.get("InvoiceId")).strip() if inner_data.get("InvoiceId") is not None and str(inner_data.get("InvoiceId")).strip() else None)
+                    or None
+                )
+
+                transaction_date: str | None = (
+                    (str(data.get("transaction_date")).strip() if data.get("transaction_date") is not None and str(data.get("transaction_date")).strip() else None)
+                    or (str(first_txn.get("TransactionDate")).strip() if first_txn.get("TransactionDate") is not None and str(first_txn.get("TransactionDate")).strip() else None)
+                    or (str(first_txn.get("transaction_date")).strip() if first_txn.get("transaction_date") is not None and str(first_txn.get("transaction_date")).strip() else None)
+                    or (str(raw_payment_data.get("transactionDate")).strip() if raw_payment_data.get("transactionDate") is not None and str(raw_payment_data.get("transactionDate")).strip() else None)
+                    or (str(raw_payment_data.get("transaction_date")).strip() if raw_payment_data.get("transaction_date") is not None and str(raw_payment_data.get("transaction_date")).strip() else None)
+                    or (str(inner_data.get("CreatedDate")).strip() if inner_data.get("CreatedDate") is not None and str(inner_data.get("CreatedDate")).strip() else None)
+                    or (str(raw_payment_data.get("created_date")).strip() if raw_payment_data.get("created_date") is not None and str(raw_payment_data.get("created_date")).strip() else None)
+                    or None
+                )
+
+                _raw_tx_status = (
+                    (str(data.get("transaction_status")).strip() if data.get("transaction_status") is not None and str(data.get("transaction_status")).strip() else None)
+                    or (str(first_txn.get("TransactionStatus")).strip() if first_txn.get("TransactionStatus") is not None and str(first_txn.get("TransactionStatus")).strip() else None)
+                    or (str(first_txn.get("transaction_status")).strip() if first_txn.get("transaction_status") is not None and str(first_txn.get("transaction_status")).strip() else None)
+                    or (str(raw_payment_data.get("transaction_status")).strip() if raw_payment_data.get("transaction_status") is not None and str(raw_payment_data.get("transaction_status")).strip() else None)
+                    or (str(raw_payment_data.get("status")).strip() if raw_payment_data.get("status") is not None and str(raw_payment_data.get("status")).strip() else None)
+                    or (str(inner_data.get("InvoiceStatus")).strip() if inner_data.get("InvoiceStatus") is not None and str(inner_data.get("InvoiceStatus")).strip() else None)
+                    or None
+                )
+                if _raw_tx_status and _raw_tx_status.lower() in ("paid", "success", "succss"):
+                    transaction_status = "success"
+                elif _raw_tx_status:
+                    transaction_status = _raw_tx_status
+                else:
+                    transaction_status = "success"
+
+                payment_url: str | None = (
+                    (str(data.get("payment_url")).strip() if data.get("payment_url") is not None and str(data.get("payment_url")).strip() else None)
+                    or (str(raw_payment_data.get("paymentUrl")).strip() if raw_payment_data.get("paymentUrl") is not None and str(raw_payment_data.get("paymentUrl")).strip() else None)
+                    or (str(raw_payment_data.get("payment_url")).strip() if raw_payment_data.get("payment_url") is not None and str(raw_payment_data.get("payment_url")).strip() else None)
+                    or (str(raw_payment_data.get("PaymentUrl")).strip() if raw_payment_data.get("PaymentUrl") is not None and str(raw_payment_data.get("PaymentUrl")).strip() else None)
+                    or (str(inner_data.get("PaymentURL")).strip() if inner_data.get("PaymentURL") is not None and str(inner_data.get("PaymentURL")).strip() else None)
+                    or None
+                )
+
                 # Normalise payment_gateway to spec values: KNET | TAP | Other
-                _gw_raw = str(meta.get("payment_gateway") or payment_gateway or "").upper()
+                _gw_raw = str(
+                    data.get("payment_gateway")
+                    or first_txn.get("PaymentGateway")
+                    or first_txn.get("payment_gateway")
+                    or raw_payment_data.get("paymentGateway")
+                    or raw_payment_data.get("PaymentGateway")
+                    or raw_payment_data.get("payment_gateway")
+                    or ""
+                ).upper()
                 if "KNET" in _gw_raw or "K-NET" in _gw_raw:
                     normalised_gateway = "KNET"
                 elif "TAP" in _gw_raw:
@@ -480,7 +598,141 @@ class BookingConfirmedHandler:
                 else:
                     normalised_gateway = None
 
-                # Build payload matching the new ushbooknpay Payment model spec
+                # Normalise payment_provider to spec values: MyFatoorah | DirectLink | Deema | Other
+                _raw_provider = str(
+                    data.get("payment_provider")
+                    or raw_payment_data.get("provider")
+                    or raw_payment_data.get("payment_provider")
+                    or raw_payment_data.get("PaymentProvider")
+                    or "myfatoorah"
+                ).lower()
+                if "fatoorah" in _raw_provider:
+                    payment_provider = "MyFatoorah"
+                elif "directlink" in _raw_provider or "direct" in _raw_provider:
+                    payment_provider = "DirectLink"
+                elif "deema" in _raw_provider:
+                    payment_provider = "Deema"
+                elif "paymentlink" in _raw_provider:
+                    payment_provider = "PaymentLink"
+                elif _raw_provider:
+                    payment_provider = "Other"
+                else:
+                    payment_provider = "MyFatoorah"
+
+                # Normalise payment_through: ushspa | ushdesk | other
+                _raw_through = str(
+                    data.get("payment_through")
+                    or raw_payment_data.get("payment_through")
+                    or "ushspa"
+                ).lower()
+                if "desk" in _raw_through:
+                    payment_through = "ushdesk"
+                elif "ushspa" in _raw_through:
+                    payment_through = "ushspa"
+                else:
+                    payment_through = "other"
+
+                payment_method = str(
+                    data.get("payment_method")
+                    or first_txn.get("PaymentMethod")
+                    or first_txn.get("payment_method")
+                    or raw_payment_data.get("payment_method")
+                    or raw_payment_data.get("paymentMethod")
+                    or raw_payment_data.get("PaymentMethod")
+                    or ("knet" if normalised_gateway == "KNET" else "card")
+                )
+
+                # Resolve created_by_user and created_by_user_data
+                raw_created_by = (
+                    data.get("created_by_user")
+                    or data.get("created_by")
+                    or raw_payment_data.get("created_by_user")
+                    or raw_payment_data.get("created_by")
+                    or raw_payment_data.get("user_id")
+                    or raw_payment_data.get("userId")
+                    or inner_data.get("UserDefinedField")
+                    or customer_id
+                    or ""
+                )
+                created_by_user: str | None = (
+                    str(raw_created_by).strip()
+                    if raw_created_by and str(raw_created_by).strip()
+                    else None
+                )
+
+                raw_user_data = (
+                    data.get("created_by_user_data")
+                    or raw_payment_data.get("created_by_user_data")
+                    or data.get("user_data")
+                )
+                if isinstance(raw_user_data, dict) and raw_user_data:
+                    created_by_user_data: dict[str, Any] = dict(raw_user_data)
+                    if created_by_user and not created_by_user_data.get("id"):
+                        created_by_user_data["id"] = created_by_user
+                else:
+                    customer_dict = data.get("customer_data") if isinstance(data.get("customer_data"), dict) else {}
+                    c_name = (
+                        customer_name
+                        or data.get("customer_name")
+                        or raw_payment_data.get("customer_name")
+                        or (customer_dict.get("name") if isinstance(customer_dict, dict) else "")
+                        or ""
+                    )
+                    c_phone = (
+                        raw_payment_data.get("customer_mobile")
+                        or raw_payment_data.get("customer_phone")
+                        or data.get("customer_phone")
+                        or data.get("customer_mobile")
+                        or (customer_dict.get("phone") if isinstance(customer_dict, dict) else None)
+                        or (customer_dict.get("phone_number") if isinstance(customer_dict, dict) else None)
+                        or ""
+                    )
+                    c_email = (
+                        raw_payment_data.get("customer_email")
+                        or data.get("customer_email")
+                        or (customer_dict.get("email") if isinstance(customer_dict, dict) else None)
+                        or ""
+                    )
+                    c_img = (
+                        (customer_dict.get("profile_image") or customer_dict.get("image") or "")
+                        if isinstance(customer_dict, dict)
+                        else ""
+                    )
+                    created_by_user_data = {
+                        "id": created_by_user or customer_id or "",
+                        "name": c_name,
+                        "phone": c_phone,
+                        "email": c_email,
+                        "image": c_img,
+                        "role": "customer" if (created_by_user == customer_id or not created_by_user) else "user",
+                    }
+
+                # Build full payment_data preserving all raw gateway keys and merging normalized identifiers
+                built_payment_data: dict[str, Any] = dict(raw_payment_data) if isinstance(raw_payment_data, dict) else {}
+                for k, v in [
+                    ("payment_id", payment_id),
+                    ("transaction_id", transaction_id),
+                    ("invoice_id", invoice_id),
+                    ("reference_id", reference_id),
+                    ("track_id", track_id),
+                    ("country", country),
+                    ("transaction_date", transaction_date),
+                    ("transaction_status", transaction_status),
+                    ("payment_url", payment_url),
+                    ("payment_gateway", normalised_gateway),
+                    ("payment_provider", payment_provider),
+                    ("payment_through", payment_through),
+                    ("payment_method", payment_method),
+                    ("invoice_reference", raw_payment_data.get("invoice_reference")),
+                    ("customer_reference", raw_payment_data.get("customer_reference")),
+                    ("authorization_id", raw_payment_data.get("authorization_id") or first_txn.get("AuthorizationId")),
+                    ("vat_amount", raw_payment_data.get("vat_amount")),
+                    ("created_date", raw_payment_data.get("created_date")),
+                ]:
+                    if v is not None and k not in built_payment_data:
+                        built_payment_data[k] = v
+
+                # Build payload matching the ushbooknpay Payment model spec
                 payload: dict[str, Any] = {
                     # ── Required fields ────────────────────────────────────
                     "customer_id": customer_id,
@@ -494,63 +746,24 @@ class BookingConfirmedHandler:
                     "payment_for": payment_for,
                     # ── Classification ─────────────────────────────────────
                     "payment_provider": payment_provider,
-                    "payment_through": "ushspa",
+                    "payment_through": payment_through,
                     "payment_gateway": normalised_gateway,
-                    # payment_method: prefer explicit value from payment_data over gateway-inferred default
-                    "payment_method": (
-                        str(
-                            meta.get("payment_method")
-                            or meta.get("paymentMethod")
-                            or meta.get("PaymentMethod")
-                            or ("knet" if normalised_gateway == "KNET" else "card")
-                        )
-                    ),
+                    "payment_method": payment_method,
                     # ── Invoice & Transaction identifiers ──────────────────
-                    # Check snake_case (actual event format) then camelCase (MyFatoorah) for each field
-                    "payment_id": (
-                        meta.get("payment_id")
-                        or meta.get("transaction_id")
-                        or meta.get("transactionId")
-                        or meta.get("TransactionId")
-                        or meta.get("invoice_id")
-                        or meta.get("invoiceId")
-                        or meta.get("InvoiceId")
-                    ),
-                    "transaction_id": (
-                        meta.get("transaction_id")
-                        or meta.get("transactionId")
-                        or meta.get("TransactionId")
-                    ),
-                    "invoice_id": (
-                        meta.get("invoice_id")
-                        or meta.get("invoiceId")
-                        or meta.get("InvoiceId")
-                    ),
-                    "invoice_value": meta.get("invoice_value") or total_amount,
-                    "reference_id": (
-                        meta.get("reference_id")
-                        or meta.get("referenceId")
-                        or meta.get("ReferenceId")
-                    ),
-                    "track_id": (
-                        meta.get("trace_id")         # snake_case alias used in actual payloads
-                        or meta.get("track_id")
-                        or meta.get("trackId")
-                        or meta.get("TrackId")
-                    ),
-                    # Normalize transaction_status: "Paid" / "paid" / "Succss" (sic) → "success"
-                    "transaction_status": (
-                        "success"
-                        if str(meta.get("transaction_status") or meta.get("status") or "").lower()
-                           in ("paid", "success", "succss")
-                        else str(meta.get("transaction_status") or "") or None
-                    ),
-                    "transaction_date": (
-                        meta.get("transaction_date")
-                        or meta.get("transactionDate")
-                        or meta.get("TransactionDate")
-                    ),
-                    "payment_url": meta.get("payment_url"),
+                    "country": country,
+                    "payment_id": payment_id,
+                    "transaction_id": transaction_id,
+                    "invoice_id": invoice_id,
+                    "invoice_value": raw_payment_data.get("invoice_value") or total_amount,
+                    "reference_id": reference_id,
+                    "track_id": track_id,
+                    "transaction_status": transaction_status,
+                    "transaction_date": transaction_date,
+                    "payment_url": payment_url,
+                    # ── Creator ────────────────────────────────────────────
+                    "created_by_user": created_by_user,
+                    "created_by_user_data": created_by_user_data,
+                    "created_by": created_by_user,
                     # ── Service & location ─────────────────────────────────
                     "service_id": str(data.get("service_id") or "") or None,
                     "service_data": data.get("service_data") or {
@@ -583,30 +796,22 @@ class BookingConfirmedHandler:
                     },
                     # ── Customer data snapshot ─────────────────────────────
                     "customer_data": {
-                        "name": customer_name or meta.get("customer_name") or data.get("customer_name"),
+                        "name": customer_name or raw_payment_data.get("customer_name") or data.get("customer_name"),
                         "mobile": (
-                            meta.get("customer_mobile")
-                            or meta.get("customer_phone")
+                            raw_payment_data.get("customer_mobile")
+                            or raw_payment_data.get("customer_phone")
                             or data.get("customer_phone")
                             or data.get("customer_mobile")
                         ),
                         "phone_number": (
-                            meta.get("customer_mobile")
-                            or meta.get("customer_phone")
+                            raw_payment_data.get("customer_mobile")
+                            or raw_payment_data.get("customer_phone")
                             or data.get("customer_phone")
                         ),
-                        "email": meta.get("customer_email") or data.get("customer_email"),
+                        "email": raw_payment_data.get("customer_email") or data.get("customer_email"),
                     },
-                    # ── Raw gateway identifiers → payment_data JSONB ───────
-                    "payment_data": {k: v for k, v in {
-                        "invoice_reference": meta.get("invoice_reference"),
-                        "customer_reference": meta.get("customer_reference"),
-                        "authorization_id": meta.get("authorization_id"),
-                        "gateway_name": meta.get("payment_gateway") or payment_gateway,
-                        "vat_amount": meta.get("vat_amount"),
-                        "created_date": meta.get("created_date"),
-                        "raw_payment_data": meta,
-                    }.items() if v is not None},
+                    # ── Raw gateway identifiers & data → payment_data JSONB ───────
+                    "payment_data": built_payment_data,
                 }
 
                 await booknpay_client._client.post(
@@ -619,6 +824,8 @@ class BookingConfirmedHandler:
                     "booking_confirmed_payment_record_created",
                     booking_id=booking_id,
                     customer_id=customer_id,
+                    created_by_user=created_by_user,
+                    payment_id=payment_id or "?",
                     total_amount=total_amount,
                     total_duration=total_duration,
                     payment_provider=payment_provider,
