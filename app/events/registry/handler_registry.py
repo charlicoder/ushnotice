@@ -125,6 +125,24 @@ def build_default_registry() -> HandlerRegistry:
             _alias.event_type = _alias_type
             registry.register(_alias)
 
+    # ── ushauth SCREAMING_SNAKE_CASE aliases ─────────────────────────────────
+    # ushauth publishes events like "PASSWORD_RESET_REQUESTED" (all-caps).
+    # The EventEnvelope validator lowercases them to "password_reset_requested",
+    # but the handlers above register as "user.password_reset_requested" /
+    # "user_password_reset_requested".  We bridge the gap by registering each
+    # ushauth event type (lowercased) → its corresponding handler.
+    _ushauth_aliases = [
+        # ushauth event_type (lowercased)     → handler class
+        ("password_reset_requested",           PasswordResetHandler),
+        ("password_changed",                   PasswordChangedHandler),
+        ("customer_delete_requested",          CustomerDeleteHandler),
+    ]
+    for _alias_key, _handler_cls in _ushauth_aliases:
+        if not registry.has_handler(_alias_key):
+            _alias_inst = _handler_cls()
+            _alias_inst.event_type = _alias_key
+            registry.register(_alias_inst)
+
     # ── Booking handlers ──────────────────────────────────────────────────────
     from app.events.handlers.booking.booking_cancelled import BookingCancelledHandler
     from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler

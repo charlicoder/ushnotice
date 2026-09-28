@@ -8,16 +8,21 @@ On a cancelled booking this handler:
      - Calls POST /api/v1/loyalty/internal/cancel/ on ushbooknpay.
      - This is non-blocking — cancellation notifications still fire even if the
        loyalty reversal fails.
-
-Additional handlers (notifications, refund tracking, etc.) can be added as
-numbered steps below step 1 as the feature set grows.
+  2. Update appointment cache in ushauth via:
+     POST /uauth/api/v1/update-appointment-cache-status-by-booking-id/
+     with {"booking_id": "<booking_id>", "new_status": "cancelled", "payment_status": "refunded"}
+  3. Update booking payment status in ushbooknpay via:
+     PATCH /booknpay/api/v1/bookings/<booking_id>/status/
+     with {"status": "cancelled", "payment_status": "refunded", ...}
 """
 
 from __future__ import annotations
 
+from app.core.exceptions import ServiceClientError
 from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
+from app.integrations.ushauth_client import UshAuthClient
 from app.integrations.ushbooknpay_client import UshBookNPayClient
 
 logger = get_logger(__name__)
@@ -29,6 +34,8 @@ class BookingCancelledHandler:
 
     Responsibilities (in order):
       1. Reverse loyalty points credited to the customer for the cancelled booking.
+      2. Update appointment cache in ushauth to status="cancelled" and payment_status="refunded".
+      3. Update booking payment status in ushbooknpay to payment_status="refunded".
     """
 
     event_type: str = "booking.cancelled"
@@ -108,3 +115,97 @@ class BookingCancelledHandler:
                 is_eligible_for_loyalty=is_eligible_for_loyalty,
                 has_customer=bool(customer_id),
             )
+
+        # ── 2. Update appointment cache in ushauth ───────────────────────────
+        if booking_id:
+            raw_payment_status = str(data.get("payment_status") or "").lower()
+            if data.get("refund_issued") or raw_payment_status in ("success", "paid", "refunded"):
+                new_payment_status = "refunded"
+            elif raw_payment_status:
+                new_payment_status = raw_payment_status
+            else:
+                new_payment_status = "refunded"
+
+            ushauth_client = UshAuthClient()
+            try:
+                resp = await ushauth_client.update_appointment_cache_status_by_booking_id(
+                    booking_id=booking_id,
+                    new_status="cancelled",
+                    payment_status=new_payment_status,
+                    correlation_id=correlation_id,
+                )
+                logger.info(
+                    "appointment_cache_status_updated_on_cancellation",
+                    booking_id=booking_id,
+                    new_status="cancelled",
+                    payment_status=new_payment_status,
+                    records_updated=resp.get("records_updated", 0) if isinstance(resp, dict) else 0,
+                    correlation_id=correlation_id,
+                )
+            except ServiceClientError as exc:
+                if exc.status_code == 404:
+                    logger.warning(
+                        "appointment_cache_not_found_on_cancellation",
+                        booking_id=booking_id,
+                        correlation_id=correlation_id,
+                    )
+                else:
+                    logger.error(
+                        "appointment_cache_update_failed_on_cancellation",
+                        booking_id=booking_id,
+                        error=str(exc),
+                        correlation_id=correlation_id,
+                    )
+                    raise
+            except Exception as exc:
+                logger.error(
+                    "appointment_cache_update_failed_on_cancellation",
+                    booking_id=booking_id,
+                    error=str(exc),
+                    correlation_id=correlation_id,
+                )
+                raise
+            finally:
+                await ushauth_client.aclose()
+
+        # ── 3. Update booking payment status in ushbooknpay ───────────────────
+        if booking_id:
+            change_by_user = (
+                data.get("change_by_user")
+                or data.get("changed_by")
+                or data.get("cancelled_by")
+                or "ushnotice"
+            )
+            change_by_user_data = (
+                data.get("change_by_user_data")
+                or ({"source": "ushnotice", "reason": str(data.get("cancellation_reason") or data.get("reason") or "Booking cancelled")})
+            )
+            booknpay_client = UshBookNPayClient()
+            try:
+                await booknpay_client.update_booking_status(
+                    booking_id=booking_id,
+                    status="cancelled",
+                    payment_status=new_payment_status,
+                    reason=str(data.get("cancellation_reason") or data.get("reason") or "Booking cancelled"),
+                    source="ushnotice",
+                    change_by_user=str(change_by_user),
+                    change_by_user_data=change_by_user_data,
+                    correlation_id=correlation_id,
+                )
+                logger.info(
+                    "booking_payment_status_updated_on_cancellation",
+                    booking_id=booking_id,
+                    status="cancelled",
+                    payment_status=new_payment_status,
+                    correlation_id=correlation_id,
+                )
+            except Exception as exc:
+                logger.error(
+                    "booking_payment_status_update_failed_on_cancellation",
+                    booking_id=booking_id,
+                    payment_status=new_payment_status,
+                    error=str(exc),
+                    correlation_id=correlation_id,
+                )
+            finally:
+                await booknpay_client.aclose()

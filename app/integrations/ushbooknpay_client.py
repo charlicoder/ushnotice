@@ -32,23 +32,40 @@ class UshBookNPayClient:
         booking_id: str,
         *,
         status: str,
+        payment_status: str | None = None,
         reason: str | None = None,
+        source: str = "ushnotice",
+        change_by_user: str | None = None,
+        change_by_user_data: dict[str, Any] | None = None,
         correlation_id: str | None = None,
     ) -> dict[str, Any]:
         """Request a booking status update from ushbooknpay.
 
         Args:
             booking_id: UUID of the booking to update.
-            status: Target status string (e.g. ``"RESCHEDULE_REQUESTED"``).
+            status: Target status string (e.g. ``"cancelled"``).
+            payment_status: Optional target payment status string (e.g. ``"refunded"``).
             reason: Optional human-readable reason for the status change.
+            source: Source actor (default ``"ushnotice"``).
+            change_by_user: Optional user ID / actor who triggered change.
+            change_by_user_data: Optional dict snapshot of user who triggered change.
             correlation_id: Propagated correlation ID.
 
         Returns:
             Response dict from ushbooknpay.
         """
         payload: dict[str, Any] = {"status": status}
+        if payment_status:
+            payload["payment_status"] = payment_status
         if reason:
             payload["reason"] = reason
+        if source:
+            payload["source"] = source
+        if change_by_user:
+            payload["change_by_user"] = change_by_user
+            payload["changed_by"] = change_by_user
+        if change_by_user_data:
+            payload["change_by_user_data"] = change_by_user_data
 
         return await self._client.patch(
             f"/api/v1/bookings/{booking_id}/status/",
