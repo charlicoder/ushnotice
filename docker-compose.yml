@@ -1,6 +1,6 @@
 
 services:
-  ushnotice:
+  web:
     build: .
     container_name: ushnotice
     ports:
