@@ -66,6 +66,19 @@ def _build_voucher_context(data: dict) -> dict:
     service_name = service_data.get("name") or data.get("service_name") or "Spa Experience"
     branch_name = branch_data.get("name") or data.get("branch_name") or "USHSPA"
 
+    sender_language = str(
+        data.get("sender_language")
+        or sender_details.get("language_preference")
+        or sender_details.get("language")
+        or "en"
+    ).lower()
+    recipient_language = str(
+        data.get("recipient_language")
+        or recipient_details.get("language_preference")
+        or recipient_details.get("language")
+        or "en"
+    ).lower()
+
     return {
         "voucher_id": str(data.get("id") or ""),
         "voucher_number": str(data.get("voucher_number") or ""),
@@ -86,10 +99,12 @@ def _build_voucher_context(data: dict) -> dict:
         "branch_name": branch_name,
         "sender_name": sender_name,
         "sender_phone": sender_details.get("phone_number") or data.get("sender_phone") or "",
+        "sender_language": sender_language,
         "recipient_name": recipient_name,
         "recipient_phone": recipient_details.get("phone_number") or data.get("recipient_phone") or "",
         "recipient_email": recipient_details.get("email") or data.get("recipient_email") or "",
         "recipient_password": str(recipient_details.get("password") or data.get("recipient_password") or ""),
+        "recipient_language": recipient_language,
     }
 
 
@@ -120,6 +135,31 @@ def _sender_whatsapp_message(ctx: dict) -> str:
     return "\n".join(lines)
 
 
+def _sender_whatsapp_message_ar(ctx: dict) -> str:
+    lines = [
+        "🎁 *تم إرسال الهدية بنجاح* — USHSPA",
+        "",
+        f"عزيزي {ctx['sender_name']}،",
+        "",
+        f"تم إرسال هديتك إلى *{ctx['recipient_name']}* وهي الآن مفعّلة! 🎉",
+        "",
+        f"🧴 *الخدمة:* {ctx['service_name']}",
+        f"📍 *الفرع:* {ctx['branch_name']}",
+    ]
+    if ctx["total_amount"]:
+        lines.append(f"💳 *القيمة:* {ctx['total_amount']} {ctx['currency']}")
+    if ctx["expire_date"]:
+        lines.append(f"📅 *تاريخ الانتهاء:* {ctx['expire_date']}")
+    if ctx["gift_message"]:
+        lines += ["", f"💬 *رسالتك:* _{ctx['gift_message']}_"]
+    lines += [
+        "",
+        "شكراً لمشاركتك تجربة USHSPA!",
+        "— فريق USHSPA",
+    ]
+    return "\n".join(lines)
+
+
 def _sender_sms_message(ctx: dict) -> str:
     name_first = (ctx["sender_name"] or "").split()[0] or "Customer"
     recipient = ctx["recipient_name"] or "the recipient"
@@ -128,6 +168,17 @@ def _sender_sms_message(ctx: dict) -> str:
     return (
         f"USHSPA: Hi {name_first}, your gift{amount_part} has been sent to {recipient}.{expire_part} "
         f"Thank you!"
+    )
+
+
+def _sender_sms_message_ar(ctx: dict) -> str:
+    name_first = (ctx["sender_name"] or "").split()[0] or "عميلنا"
+    recipient = ctx["recipient_name"] or "المستلم"
+    amount_part = f" ({ctx['total_amount']} {ctx['currency']})" if ctx["total_amount"] else ""
+    expire_part = f" تنتهي في: {ctx['expire_date']}." if ctx["expire_date"] else ""
+    return (
+        f"USHSPA: مرحباً {name_first}، تم إرسال هديتك{amount_part} إلى {recipient}.{expire_part} "
+        f"شكراً لك!"
     )
 
 
@@ -196,6 +247,70 @@ def _recipient_sms_message(ctx: dict) -> str:
         message_line,
         "",
         "View the link below to receive your gift",
+        "",
+        url,
+    ]
+    return "\n".join(lines)
+
+
+def _recipient_whatsapp_message_ar(ctx: dict) -> str:
+    lines = [
+        "🎁 *لقد استلمت هدية!* — USHSPA",
+        "",
+        f"عزيزي {ctx['recipient_name']}،",
+        "",
+        f"أرسل لك *{ctx['sender_name']}* هدية سبا حصرية! 💆‍♀️✨",
+        "",
+        f"🧴 *الخدمة:* {ctx['service_name']}",
+        f"📍 *الفرع:* {ctx['branch_name']}",
+    ]
+    if ctx["total_amount"]:
+        lines.append(f"💳 *قيمة الهدية:* {ctx['total_amount']} {ctx['currency']}")
+    if ctx["expire_date"]:
+        lines.append(f"📅 *صالحة حتى:* {ctx['expire_date']}")
+    if ctx["gift_message"]:
+        lines += ["", f"💬 *رسالة من {ctx['sender_name']}:* _{ctx['gift_message']}_"]
+    lines += [
+        "",
+        "🔐 *رمزك السري:* " + (ctx["secret_code"] or "راجع بريدك الإلكتروني"),
+    ]
+    if ctx.get("recipient_password"):
+        lines += [
+            "",
+            f"🔑 *كلمة المرور الخاصة بك:* {ctx['recipient_password']}",
+        ]
+    lines += [
+        "",
+        f"🌐 *عرض بطاقة الهدية:* {ctx['gift_card_url']}",
+        "",
+        "📱 للاستفادة من الهدية، حمّل تطبيق USHSPA وسجّل الدخول بهذا الرقم:",
+        f"{ctx['app_install_url']}",
+        "",
+        "— فريق USHSPA",
+    ]
+    return "\n".join(lines)
+
+
+def _recipient_sms_message_ar(ctx: dict) -> str:
+    recipient_name = ctx.get("recipient_name") or "عميلنا"
+    if recipient_name == "Valued Customer":
+        recipient_name = "عميلنا"
+    sender = ctx.get("gift_from") or ctx.get("sender_name") or "شخص مميز"
+    message = ctx.get("gift_message") or "عيد ميلاد سعيد"
+    if not message.endswith("🎈 🙏🏻") and not message.endswith("\U0001f388 \U0001f64f\U0001f3fb"):
+        message_line = f"{message} 🎈 🙏🏻"
+    else:
+        message_line = message
+    url = ctx.get("gift_card_url") or ""
+
+    lines = [
+        "USHSPA:",
+        "",
+        f"مرحباً {recipient_name}، لقد استلمت هدية من {sender}!",
+        "نص الرسالة:",
+        message_line,
+        "",
+        "اضغط على الرابط أدناه لاستلام هديتك",
         "",
         url,
     ]
@@ -536,12 +651,18 @@ class VoucherActiveHandler:
         correlation_id: str | None,
     ) -> None:
         """Send WhatsApp/SMS + Email to the gift sender."""
+        sender_lang = vctx.get("sender_language") or "en"
+
         # WhatsApp
         try:
-            wa_body = _sender_whatsapp_message(vctx)
+            if sender_lang == "ar":
+                wa_body = _sender_whatsapp_message_ar(vctx)
+            else:
+                wa_body = _sender_whatsapp_message(vctx)
             sender_payload = {
                 "phone_number": sender_phone,
                 "customer_name": sender_name,
+                "language_preference": sender_lang,
             }
             wa_recipient = ChannelResolver.resolve_whatsapp_recipient(sender_payload)
             if wa_recipient:
@@ -561,10 +682,14 @@ class VoucherActiveHandler:
 
         # SMS fallback (always also send SMS so sender gets a text record)
         try:
-            sms_body = _sender_sms_message(vctx)
+            if sender_lang == "ar":
+                sms_body = _sender_sms_message_ar(vctx)
+            else:
+                sms_body = _sender_sms_message(vctx)
             sender_payload_sms = {
                 "phone_number": sender_phone,
                 "customer_name": sender_name,
+                "language_preference": sender_lang,
             }
             sms_recipient = ChannelResolver.resolve_sms_recipient(sender_payload_sms)
             if sms_recipient:
@@ -598,6 +723,7 @@ class VoucherActiveHandler:
                 sender_email_payload = {
                     "email": sender_email,
                     "customer_name": sender_name,
+                    "language_preference": sender_lang,
                 }
                 email_recipient = ChannelResolver.resolve_email_recipient(sender_email_payload)
                 if email_recipient:
@@ -631,13 +757,19 @@ class VoucherActiveHandler:
         correlation_id: str | None,
     ) -> None:
         """Send WhatsApp/SMS + Email to the gift recipient with secret_code and link."""
+        recipient_lang = vctx.get("recipient_language") or "en"
+
         # WhatsApp
         if recipient_phone:
             try:
-                wa_body = _recipient_whatsapp_message(vctx)
+                if recipient_lang == "ar":
+                    wa_body = _recipient_whatsapp_message_ar(vctx)
+                else:
+                    wa_body = _recipient_whatsapp_message(vctx)
                 recipient_payload = {
                     "phone_number": recipient_phone,
                     "customer_name": recipient_name,
+                    "language_preference": recipient_lang,
                 }
                 wa_recipient = ChannelResolver.resolve_whatsapp_recipient(recipient_payload)
                 if wa_recipient:
@@ -657,10 +789,14 @@ class VoucherActiveHandler:
 
             # SMS — also send so the recipient has the code as a text message
             try:
-                sms_body = _recipient_sms_message(vctx)
+                if recipient_lang == "ar":
+                    sms_body = _recipient_sms_message_ar(vctx)
+                else:
+                    sms_body = _recipient_sms_message(vctx)
                 recipient_payload_sms = {
                     "phone_number": recipient_phone,
                     "customer_name": recipient_name,
+                    "language_preference": recipient_lang,
                 }
                 sms_recipient = ChannelResolver.resolve_sms_recipient(recipient_payload_sms)
                 if sms_recipient:

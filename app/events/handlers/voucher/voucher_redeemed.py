@@ -120,10 +120,24 @@ def _build_redeemed_context(data: dict) -> dict:
         "booking_number": booking_number,
         "sender_name": sender_name,
         "sender_phone": sender_details.get("phone_number") or data.get("sender_phone") or "",
+        "sender_language": str(
+            data.get("sender_language")
+            or sender_details.get("language_preference")
+            or sender_details.get("language")
+            or "en"
+        ).lower(),
         "recipient_name": recipient_name,
         "username": username,
         "recipient_phone": recipient_details.get("phone_number") or data.get("recipient_phone") or "",
         "recipient_email": recipient_details.get("email") or data.get("recipient_email") or "",
+        "recipient_language": str(
+            data.get("recipient_language")
+            or recipient_details.get("language_preference")
+            or recipient_details.get("language")
+            or (booking_data.get("customer_data") or {}).get("language_preference")
+            or (booking_data.get("customer_data") or {}).get("language")
+            or "en"
+        ).lower(),
         "service_name": service_name,
         "branch_name": branch_name,
         "branch_location": branch_location,
@@ -201,6 +215,72 @@ def _redeemed_sms_message(ctx: dict, audience: str) -> str:
         return (
             f"USHSPA: Hi {name_first}, your gift to {recipient_first} was redeemed — "
             f"{service} on {date} at {time}.{ref_part}"
+        )
+
+
+def _redeemed_whatsapp_message_ar(ctx: dict, recipient_label: str, audience: str) -> str:
+    """Compose an Arabic WhatsApp redemption message for sender or recipient."""
+    time_range = (
+        f"{ctx['appointment_time']}–{ctx['appointment_end_time']}"
+        if ctx["appointment_end_time"]
+        else ctx["appointment_time"]
+    )
+    if audience == "recipient":
+        intro = f"أخبار رائعة، {ctx['recipient_name']}! 🎉 تم استخدام هدية USHSPA الخاصة بك."
+        detail_line = f"تم تأكيد حجز موعدك باستخدام الهدية المقدمة من {ctx['sender_name']}."
+    else:
+        intro = f"مرحباً {ctx['sender_name']}! 🎉 تم استخدام هديتك إلى {ctx['recipient_name']}."
+        detail_line = f"قام {ctx['recipient_name']} بتحديد موعد حجز باستخدام هديتك!"
+
+    lines = [
+        "✅ *تم استخدام الهدية* — USHSPA",
+        "",
+        intro,
+        "",
+        detail_line,
+        "",
+        f"🧴 *الخدمة:* {ctx['service_name']}",
+        f"📍 *الفرع:* {ctx['branch_name']}",
+    ]
+    if ctx["branch_location"]:
+        lines.append(f"   {ctx['branch_location']}")
+    if ctx["appointment_date"]:
+        lines.append(f"📅 *التاريخ:* {ctx['appointment_date']}")
+    if time_range:
+        lines.append(f"🕐 *الوقت:* {time_range}")
+    if ctx["booking_reference"]:
+        lines.append(f"🔖 *المرجع:* {ctx['booking_reference']}")
+    lines += [
+        "",
+        "نتمنى لك تجربة ممتعة في السبا!",
+        "— فريق USHSPA",
+    ]
+    return "\n".join(lines)
+
+
+def _redeemed_sms_message_ar(ctx: dict, audience: str) -> str:
+    service = ctx["service_name"]
+    date = ctx["appointment_date"]
+    time = ctx["appointment_time"]
+    booking_number = ctx.get("booking_number") or ctx.get("booking_reference") or ""
+    ref_part = f" رقم الحجز: {booking_number}" if booking_number else ""
+    if audience == "recipient":
+        username = ctx.get("username") or (ctx["recipient_name"] or "").split()[0] or "عميلنا"
+        if username == "Valued":
+            username = "عميلنا"
+        return (
+            f"USHSPA: \n"
+            f"مرحباً {username}، تم تأكيد حجز هديتك لخدمة {service} بتاريخ {date} الساعة {time}. \n"
+            f"رقم الحجز: {booking_number} نتمنى لك أوقاتاً ممتعة!"
+        )
+    else:
+        name_first = (ctx["sender_name"] or "").split()[0] or "عميلنا"
+        recipient_first = (ctx["recipient_name"] or "").split()[0] or "المستلم"
+        if recipient_first == "Valued":
+            recipient_first = "المستلم"
+        return (
+            f"USHSPA: مرحباً {name_first}، تم استخدام هديتك إلى {recipient_first} — "
+            f"{service} بتاريخ {date} الساعة {time}.{ref_part}"
         )
 
 
@@ -285,12 +365,20 @@ class VoucherRedeemedHandler:
     ) -> None:
         """Send WhatsApp/SMS + Email to a specific person (sender or recipient)."""
         tpl_prefix = f"voucher/redeemed_{audience}"
+        party_lang = vctx.get(f"{audience}_language") or "en"
 
         # WhatsApp
         if phone:
             try:
-                wa_body = _redeemed_whatsapp_message(vctx, name, audience)
-                wa_payload = {"phone_number": phone, "customer_name": name}
+                if party_lang == "ar":
+                    wa_body = _redeemed_whatsapp_message_ar(vctx, name, audience)
+                else:
+                    wa_body = _redeemed_whatsapp_message(vctx, name, audience)
+                wa_payload = {
+                    "phone_number": phone,
+                    "customer_name": name,
+                    "language_preference": party_lang,
+                }
                 wa_recipient = ChannelResolver.resolve_whatsapp_recipient(wa_payload)
                 if wa_recipient:
                     req = NotificationRequest(
@@ -309,8 +397,15 @@ class VoucherRedeemedHandler:
 
             # SMS
             try:
-                sms_body = _redeemed_sms_message(vctx, audience)
-                sms_payload = {"phone_number": phone, "customer_name": name}
+                if party_lang == "ar":
+                    sms_body = _redeemed_sms_message_ar(vctx, audience)
+                else:
+                    sms_body = _redeemed_sms_message(vctx, audience)
+                sms_payload = {
+                    "phone_number": phone,
+                    "customer_name": name,
+                    "language_preference": party_lang,
+                }
                 sms_recipient = ChannelResolver.resolve_sms_recipient(sms_payload)
                 if sms_recipient:
                     req = NotificationRequest(
@@ -330,7 +425,11 @@ class VoucherRedeemedHandler:
         # Email
         if email:
             try:
-                email_payload = {"email": email, "customer_name": name}
+                email_payload = {
+                    "email": email,
+                    "customer_name": name,
+                    "language_preference": party_lang,
+                }
                 email_recipient = ChannelResolver.resolve_email_recipient(email_payload)
                 if email_recipient:
                     req = NotificationRequest(

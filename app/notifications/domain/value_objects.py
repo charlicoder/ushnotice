@@ -31,8 +31,10 @@ class Recipient:
     def __post_init__(self) -> None:
         if not self.address:
             raise ValueError("Recipient address must not be empty.")
-        if self.language not in ("en", "ar"):
-            # Use object.__setattr__ because the dataclass is frozen.
+        clean_lang = str(self.language or "").strip().lower()
+        if clean_lang.startswith("ar"):
+            object.__setattr__(self, "language", "ar")
+        else:
             object.__setattr__(self, "language", "en")
 
     @property

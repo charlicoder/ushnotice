@@ -59,11 +59,12 @@ def _build_gift_context(data: dict) -> dict:
         "sender_name": sender_name,
         "sender_phone": sender_data.get("phone_number") or "",
         "sender_email": sender_data.get("email") or "",
+        "sender_language": str(data.get("sender_language") or sender_data.get("language_preference") or sender_data.get("language") or "en").lower(),
         "recipient_name": recipient_name,
         "recipient_phone": data.get("recipient_phone") or recipient_data.get("phone_number") or "",
         "recipient_email": recipient_data.get("email") or "",
         "recipient_password": str(recipient_data.get("password") or data.get("recipient_password") or ""),
-        "recipient_language": str(data.get("recipient_language") or "en").lower(),
+        "recipient_language": str(data.get("recipient_language") or recipient_data.get("language_preference") or recipient_data.get("language") or "en").lower(),
         "payment_provider": str(data.get("payment_provider") or ""),
         "payment_through": str(data.get("payment_through") or ""),
     }
@@ -82,6 +83,22 @@ def _sender_whatsapp_message(ctx: dict) -> str:
     if ctx["expire_date"]:
         lines.append(f"Expires: {ctx['expire_date']}")
     lines.append(f"View your gift link: {ctx['gift_card_url']}")
+    return "\n".join(lines)
+
+
+def _sender_whatsapp_message_ar(ctx: dict) -> str:
+    lines = [
+        "🎁 تم إرسال الهدية بنجاح — USHSPA",
+        "",
+        f"عزيزي {ctx['sender_name']}،",
+        "",
+        f"تم إرسال هديتك إلى {ctx['recipient_name']} وهي الآن مفعّلة!"
+    ]
+    if ctx["total_amount"]:
+        lines.append(f"القيمة: {ctx['total_amount']} {ctx['currency']}")
+    if ctx["expire_date"]:
+        lines.append(f"تنتهي في: {ctx['expire_date']}")
+    lines.append(f"رابط الهدية: {ctx['gift_card_url']}")
     return "\n".join(lines)
 
 
@@ -170,12 +187,17 @@ class GiftPurchaseCompletedHandler:
     ) -> None:
         """Send WhatsApp to the gift sender."""
         try:
-            wa_body = _sender_whatsapp_message(gctx)
+            sender_lang = gctx.get("sender_language") or "en"
+            if sender_lang == "ar":
+                wa_body = _sender_whatsapp_message_ar(gctx)
+            else:
+                wa_body = _sender_whatsapp_message(gctx)
             # Remove secret_code from context for safety before sending
             safe_ctx = {k: v for k, v in gctx.items() if k != "secret_code"}
             sender_payload = {
                 "phone_number": sender_phone,
                 "customer_name": sender_name,
+                "language_preference": sender_lang,
             }
             recipient = ChannelResolver.resolve_whatsapp_recipient(sender_payload)
             if recipient:
@@ -215,6 +237,7 @@ class GiftPurchaseCompletedHandler:
             recipient_payload = {
                 "phone_number": recipient_phone,
                 "customer_name": recipient_name,
+                "language_preference": lang,
             }
             recipient = ChannelResolver.resolve_whatsapp_recipient(recipient_payload)
             if recipient:

@@ -31,7 +31,12 @@ class GiftDeliveredHandler:
         
         recipient_name = recipient_data.get("name") or "Valued Customer"
         recipient_phone = data.get("recipient_phone") or recipient_data.get("phone_number") or ""
-        recipient_language = str(data.get("recipient_language") or "en").lower()
+        recipient_language = str(
+            data.get("recipient_language")
+            or recipient_data.get("language_preference")
+            or recipient_data.get("language")
+            or "en"
+        ).lower()
         public_token = data.get("public_token") or ""
         
         gift_card_url = _GIFT_CARD_PAGE_URL.format(public_token=public_token) if public_token else "https://ushspa.co/"
@@ -49,6 +54,7 @@ class GiftDeliveredHandler:
             recipient_payload = {
                 "phone_number": recipient_phone,
                 "customer_name": recipient_name,
+                "language_preference": recipient_language,
             }
             recipient_obj = ChannelResolver.resolve_whatsapp_recipient(recipient_payload)
             if recipient_obj:

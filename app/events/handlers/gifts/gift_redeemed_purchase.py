@@ -33,15 +33,30 @@ class GiftRedeemedPurchaseHandler:
         
         recipient_name = recipient_data.get("name") or "Valued Customer"
         recipient_phone = data.get("recipient_phone") or recipient_data.get("phone_number") or ""
-        recipient_language = str(data.get("recipient_language") or "en").lower()
+        sender_lang = str(
+            data.get("sender_language")
+            or sender_data.get("language_preference")
+            or sender_data.get("language")
+            or "en"
+        ).lower()
+        recipient_language = str(
+            data.get("recipient_language")
+            or recipient_data.get("language_preference")
+            or recipient_data.get("language")
+            or "en"
+        ).lower()
 
         # ── Notify SENDER ─────────────────────────────────────────────────
         if sender_phone:
             try:
-                wa_body_sender = f"🎁 Gift Redeemed — {recipient_name} has redeemed your gift at USHSPA!"
+                if sender_lang == "ar":
+                    wa_body_sender = f"🎁 تم استخدام الهدية — قام {recipient_name} باستخدام هديتك في USHSPA!"
+                else:
+                    wa_body_sender = f"🎁 Gift Redeemed — {recipient_name} has redeemed your gift at USHSPA!"
                 sender_payload = {
                     "phone_number": sender_phone,
                     "customer_name": sender_name,
+                    "language_preference": sender_lang,
                 }
                 recipient_obj = ChannelResolver.resolve_whatsapp_recipient(sender_payload)
                 if recipient_obj:
@@ -72,6 +87,7 @@ class GiftRedeemedPurchaseHandler:
                 recipient_payload = {
                     "phone_number": recipient_phone,
                     "customer_name": recipient_name,
+                    "language_preference": recipient_language,
                 }
                 recipient_obj = ChannelResolver.resolve_whatsapp_recipient(recipient_payload)
                 if recipient_obj:

@@ -49,7 +49,12 @@ class GiftClaimedHandler:
         # The prompt doesn't specify how to choose sender language, so we might just use English or send both?
         # Actually, let's check if there is a `sender_language` or `recipient_language`. If not, just send English or use recipient_language if provided?
         # Let's check sender_language if available, else default to English.
-        sender_lang = str(data.get("sender_language") or "en").lower()
+        sender_lang = str(
+            data.get("sender_language")
+            or sender_data.get("language_preference")
+            or sender_data.get("language")
+            or "en"
+        ).lower()
         if sender_lang == "ar":
             wa_body = _sender_whatsapp_message_ar(sender_name, recipient_name)
         else:
@@ -59,6 +64,7 @@ class GiftClaimedHandler:
             sender_payload = {
                 "phone_number": sender_phone,
                 "customer_name": sender_name,
+                "language_preference": sender_lang,
             }
             recipient = ChannelResolver.resolve_whatsapp_recipient(sender_payload)
             if recipient:

@@ -16,6 +16,64 @@ class ChannelResolver:
     """Resolves recipient and channel routing for event notifications."""
 
     @staticmethod
+    def extract_language(
+        payload: dict[str, Any],
+        default_lang: str | None = None,
+    ) -> str:
+        """Extract and normalize language preference from payload or nested dicts.
+
+        Returns 'ar' if Arabic, else 'en'.
+        """
+        keys = (
+            "language_preference",
+            "language",
+            "preferred_language",
+            "customer_language",
+            "recipient_language",
+            "sender_language",
+            "lang",
+        )
+        for k in keys:
+            val = payload.get(k)
+            if val and isinstance(val, str) and val.strip():
+                clean = val.strip().lower()
+                if clean.startswith("ar"):
+                    return "ar"
+                if clean.startswith("en"):
+                    return "en"
+
+        nested_wrappers = (
+            "customer",
+            "customer_data",
+            "user",
+            "user_data",
+            "recipient",
+            "recipient_data",
+            "recipient_details",
+            "sender",
+            "sender_data",
+            "sender_details",
+        )
+        for wrap in nested_wrappers:
+            nested = payload.get(wrap)
+            if isinstance(nested, dict):
+                for k in keys:
+                    val = nested.get(k)
+                    if val and isinstance(val, str) and val.strip():
+                        clean = val.strip().lower()
+                        if clean.startswith("ar"):
+                            return "ar"
+                        if clean.startswith("en"):
+                            return "en"
+
+        try:
+            default_from_settings = get_settings().DEFAULT_LANGUAGE
+        except Exception:
+            default_from_settings = "en"
+        fallback = default_lang or default_from_settings or "en"
+        return "ar" if str(fallback).strip().lower().startswith("ar") else "en"
+
+    @staticmethod
     def resolve_sms_recipient(
         payload: dict[str, Any],
         default_lang: str | None = None,
@@ -28,10 +86,33 @@ class ChannelResolver:
             or payload.get("customer_phone")
         )
         if not phone:
+            for wrap in ("customer", "customer_data", "user", "user_data"):
+                nested = payload.get(wrap)
+                if isinstance(nested, dict):
+                    phone = (
+                        nested.get("phone")
+                        or nested.get("phone_number")
+                        or nested.get("mobile")
+                    )
+                    if phone:
+                        break
+        if not phone:
             return None
 
-        name = payload.get("customer_name") or payload.get("name") or ""
-        lang = payload.get("language") or payload.get("preferred_language") or default_lang or get_settings().DEFAULT_LANGUAGE
+        name = (
+            payload.get("customer_name")
+            or payload.get("name")
+            or (
+                isinstance(payload.get("customer"), dict)
+                and (payload["customer"].get("name") or payload["customer"].get("full_name"))
+            )
+            or (
+                isinstance(payload.get("user"), dict)
+                and (payload["user"].get("name") or payload["user"].get("full_name"))
+            )
+            or ""
+        )
+        lang = ChannelResolver.extract_language(payload, default_lang)
 
         return Recipient(
             channel=NotificationChannel.SMS,
@@ -48,10 +129,29 @@ class ChannelResolver:
         """Extract Email recipient from payload."""
         email = payload.get("email") or payload.get("customer_email")
         if not email:
+            for wrap in ("customer", "customer_data", "user", "user_data"):
+                nested = payload.get(wrap)
+                if isinstance(nested, dict):
+                    email = nested.get("email")
+                    if email:
+                        break
+        if not email:
             return None
 
-        name = payload.get("customer_name") or payload.get("name") or ""
-        lang = payload.get("language") or payload.get("preferred_language") or default_lang or get_settings().DEFAULT_LANGUAGE
+        name = (
+            payload.get("customer_name")
+            or payload.get("name")
+            or (
+                isinstance(payload.get("customer"), dict)
+                and (payload["customer"].get("name") or payload["customer"].get("full_name"))
+            )
+            or (
+                isinstance(payload.get("user"), dict)
+                and (payload["user"].get("name") or payload["user"].get("full_name"))
+            )
+            or ""
+        )
+        lang = ChannelResolver.extract_language(payload, default_lang)
 
         return Recipient(
             channel=NotificationChannel.EMAIL,
@@ -74,10 +174,34 @@ class ChannelResolver:
             or payload.get("customer_phone")
         )
         if not phone:
+            for wrap in ("customer", "customer_data", "user", "user_data"):
+                nested = payload.get(wrap)
+                if isinstance(nested, dict):
+                    phone = (
+                        nested.get("whatsapp_number")
+                        or nested.get("phone")
+                        or nested.get("phone_number")
+                        or nested.get("mobile")
+                    )
+                    if phone:
+                        break
+        if not phone:
             return None
 
-        name = payload.get("customer_name") or payload.get("name") or ""
-        lang = payload.get("language") or payload.get("preferred_language") or default_lang or get_settings().DEFAULT_LANGUAGE
+        name = (
+            payload.get("customer_name")
+            or payload.get("name")
+            or (
+                isinstance(payload.get("customer"), dict)
+                and (payload["customer"].get("name") or payload["customer"].get("full_name"))
+            )
+            or (
+                isinstance(payload.get("user"), dict)
+                and (payload["user"].get("name") or payload["user"].get("full_name"))
+            )
+            or ""
+        )
+        lang = ChannelResolver.extract_language(payload, default_lang)
 
         return Recipient(
             channel=NotificationChannel.WHATSAPP,

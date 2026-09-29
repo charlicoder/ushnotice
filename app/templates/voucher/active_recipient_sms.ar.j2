@@ -1,0 +1,10 @@
+{% if message_body %}{{ message_body }}{% else %}USHSPA:
+
+مرحباً {{ recipient_name }}، لقد استلمت هدية من {{ gift_from if gift_from else sender_name }}!
+نص الرسالة:
+{{ gift_message if gift_message else "عيد ميلاد سعيد" }} 🎈 🙏🏻
+
+اضغط على الرابط أدناه لاستلام هديتك:
+
+{{ gift_card_url }}
+{% endif %}
