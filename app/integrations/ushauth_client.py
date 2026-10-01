@@ -218,5 +218,43 @@ class UshAuthClient:
             correlation_id=correlation_id,
         )
 
+    async def update_appointment_cache_by_booking_id(
+        self,
+        *,
+        booking_id: str,
+        appointment_date: str,
+        appointment_time: str,
+        duration: int,
+        therapist_id: str,
+        status: str,
+        payment_status: str,
+        branch_id: str | None = None,
+        service_arrangement_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> dict:
+        """Update appointment cache by booking_id.
+
+        Calls POST /api/v1/update-appointment-cache-by-booking-id/
+        """
+        payload: dict[str, Any] = {
+            "booking_id": booking_id,
+            "appointment_date": appointment_date,
+            "appointment_time": appointment_time,
+            "duration": duration,
+            "therapist_id": therapist_id,
+            "status": status,
+            "payment_status": payment_status,
+        }
+        if branch_id:
+            payload["branch_id"] = branch_id
+        if service_arrangement_id:
+            payload["service_arrangement_id"] = service_arrangement_id
+
+        return await self._client.post(
+            "/api/v1/update-appointment-cache-by-booking-id/",
+            json=payload,
+            correlation_id=correlation_id,
+        )
+
     async def aclose(self) -> None:
         await self._client.aclose()
