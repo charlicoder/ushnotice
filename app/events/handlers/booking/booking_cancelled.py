@@ -121,10 +121,12 @@ class BookingCancelledHandler:
             raw_payment_status = str(data.get("payment_status") or "").lower()
             if data.get("refund_issued") or raw_payment_status in ("success", "paid", "refunded"):
                 new_payment_status = "refunded"
+            elif raw_payment_status in ("pending", "unpaid", "not_initiated", "cancelled", "payment_pending"):
+                new_payment_status = "cancelled"
             elif raw_payment_status:
                 new_payment_status = raw_payment_status
             else:
-                new_payment_status = "refunded"
+                new_payment_status = "cancelled"
 
             ushauth_client = UshAuthClient()
             try:

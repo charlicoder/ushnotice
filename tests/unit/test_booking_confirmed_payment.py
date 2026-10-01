@@ -474,6 +474,55 @@ async def test_booking_cancelled_handler_updates_appointment_cache_in_ushauth():
 
 
 @pytest.mark.asyncio
+async def test_booking_cancelled_handler_updates_appointment_cache_pending_payment_to_cancelled():
+    """Verify that BookingCancelledHandler sets appointment cache payment_status to cancelled when payment was pending."""
+    from unittest.mock import patch
+    from app.events.handlers.booking.booking_cancelled import BookingCancelledHandler
+    from app.events.handlers.base import HandlerContext
+    from app.events.schemas.envelope import EventEnvelope
+
+    handler = BookingCancelledHandler()
+    data = {
+        "booking_id": "6f4acd1a-9a5d-4cce-8adc-0dd3ef8ef91f",
+        "customer_id": "b92c374d-fdb5-48ff-96d5-bb4dc2abc452",
+        "status": "cancelled",
+        "payment_status": "pending",
+        "is_eligible_for_loyalty": False,
+    }
+    envelope = EventEnvelope(
+        event_id=uuid.uuid4(),
+        event_type="booking.cancelled",
+        version=1,
+        occurred_at=datetime.now(tz=timezone.utc),
+        source="ushbooknpay",
+        data=data,
+    )
+    mock_ctx = MagicMock(spec=HandlerContext)
+
+    mock_ushauth = AsyncMock()
+    mock_ushauth.update_appointment_cache_status_by_booking_id = AsyncMock(
+        return_value={"success": True, "records_updated": 1}
+    )
+    mock_ushauth.aclose = AsyncMock()
+
+    mock_booknpay = AsyncMock()
+    mock_booknpay.update_booking_status = AsyncMock(return_value={"success": True})
+    mock_booknpay.aclose = AsyncMock()
+
+    with patch("app.events.handlers.booking.booking_cancelled.UshAuthClient", return_value=mock_ushauth), \
+         patch("app.events.handlers.booking.booking_cancelled.UshBookNPayClient", return_value=mock_booknpay):
+        await handler.handle(envelope, mock_ctx)
+
+    mock_ushauth.update_appointment_cache_status_by_booking_id.assert_awaited_once_with(
+        booking_id="6f4acd1a-9a5d-4cce-8adc-0dd3ef8ef91f",
+        new_status="cancelled",
+        payment_status="cancelled",
+        correlation_id=envelope.correlation_id_str,
+    )
+    mock_ushauth.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_booking_cancelled_handler_handles_404_from_ushauth_gracefully():
     """Verify that BookingCancelledHandler does not crash when ushauth returns 404 (no cache entry)."""
     from unittest.mock import patch
