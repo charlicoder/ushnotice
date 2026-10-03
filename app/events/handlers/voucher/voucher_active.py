@@ -21,6 +21,7 @@ from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.integrations.ushbooknpay_client import UshBookNPayClient
+from app.invoicing.triggers import trigger_voucher_invoice
 from app.notifications.application.channel_resolver import ChannelResolver
 from app.notifications.application.notification_service import NotificationService
 from app.notifications.domain.enums import NotificationChannel
@@ -839,3 +840,7 @@ class VoucherActiveHandler:
                 logger.warning("voucher_active_recipient_email_failed", voucher_id=voucher_id, error=str(exc))
         else:
             logger.info("voucher_active_recipient_email_skipped_no_email", voucher_id=voucher_id)
+
+        # ── Invoice: create in ushanr (non-blocking) ──────────────────────────
+        if voucher_id:
+            await trigger_voucher_invoice(data, correlation_id=correlation_id)

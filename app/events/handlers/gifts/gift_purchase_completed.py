@@ -9,6 +9,7 @@ from typing import Any
 from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
+from app.invoicing.triggers import trigger_gift_purchase_invoice
 from app.notifications.application.channel_resolver import ChannelResolver
 from app.notifications.application.notification_service import NotificationService
 from app.notifications.domain.value_objects import NotificationRequest
@@ -173,6 +174,10 @@ class GiftPurchaseCompletedHandler:
                 logger.info("gift_purchase_completed_recipient_no_contact", gift_id=gift_id)
         else:
             logger.info("gift_purchase_completed_recipient_skipped_desk", gift_id=gift_id)
+
+        # ── Invoice: create in ushanr (non-blocking) ──────────────────────────
+        if gift_id:
+            await trigger_gift_purchase_invoice(data, correlation_id=correlation_id)
 
     async def _notify_sender(
         self,

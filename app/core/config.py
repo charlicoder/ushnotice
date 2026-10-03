@@ -63,10 +63,40 @@ class Settings(BaseSettings):
     USHNOTICE_BASE_PATH: str = "/unotice"
     GATEWAY_TIMEOUT: float = 10.0
 
+    # ushanr — called directly (not through gateway) for internal invoice endpoints
+    USHANR_BASE_URL: str = Field(
+        default="http://ushanr:8007",
+        description="Direct base URL of the ushanr accounting service.",
+    )
+    USHANR_INTERNAL_API_KEY: str = Field(
+        default="",
+        description="Shared secret sent as X-Internal-Key to ushanr internal endpoints.",
+    )
+
     # Public-facing base URL for shop order tracking pages sent to customers.
     # Format: https://ushspa.co/order-tracking  (no trailing slash)
     # The full tracking link will be: {USH_ORDER_TRACKING_BASE_URL}/{public_token}
     USH_ORDER_TRACKING_BASE_URL: str = ""
+
+    # ── ushanr accounting entity UUIDs ────────────────────────────────────────
+    # Set these to the actual UUIDs from your ushanr database.
+    # Required for invoice generation to work.
+    USHANR_COMPANY_ID: str = Field(
+        default="",
+        description="UUID of the USHSPA company record in ushanr.",
+    )
+    USHANR_AR_JOURNAL_ID: str = Field(
+        default="",
+        description="UUID of the Accounts Receivable journal in ushanr.",
+    )
+    USHANR_REVENUE_ACCOUNT_ID: str = Field(
+        default="",
+        description="UUID of the primary service revenue account in ushanr.",
+    )
+    USHANR_ADDON_ACCOUNT_ID: str = Field(
+        default="",
+        description="UUID of the add-ons revenue account (falls back to USHANR_REVENUE_ACCOUNT_ID).",
+    )
 
     # ── AWS ───────────────────────────────────────────────────────────────────
     AWS_ACCESS_KEY_ID: str = ""
@@ -153,9 +183,30 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_database_url(cls, v: str) -> str:
-        """Ensure the DATABASE_URL uses the async asyncpg dialect."""
+        """Ensure the DATABASE_URL uses asyncpg and resolves host.docker.internal vs localhost."""
         if "postgresql://" in v and "asyncpg" not in v:
-            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif v.startswith("postgresql+psycopg2://"):
+            v = v.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+
+        import os
+        is_container = os.path.exists("/.dockerenv") or bool(os.environ.get("IN_DOCKER"))
+
+        if is_container:
+            if "@localhost:" in v or "@127.0.0.1:" in v:
+                try:
+                    import socket
+                    socket.gethostbyname("host.docker.internal")
+                    v = v.replace("@localhost:", "@host.docker.internal:").replace("@127.0.0.1:", "@host.docker.internal:")
+                except Exception:
+                    pass
+        else:
+            if "host.docker.internal" in v:
+                try:
+                    import socket
+                    socket.gethostbyname("host.docker.internal")
+                except Exception:
+                    v = v.replace("host.docker.internal", "localhost")
         return v
 
     # ── Derived helpers ───────────────────────────────────────────────────────

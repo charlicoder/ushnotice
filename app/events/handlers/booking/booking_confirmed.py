@@ -27,6 +27,7 @@ from app.notifications.domain.value_objects import NotificationRequest
 
 from app.integrations.ushauth_client import UshAuthClient
 from app.integrations.ushbooknpay_client import UshBookNPayClient
+from app.invoicing.triggers import trigger_booking_invoice
 
 logger = get_logger(__name__)
 
@@ -918,6 +919,11 @@ class BookingConfirmedHandler:
                 booking_id=booking_id,
             )
 
+
+        # ── 4. Create invoice in ushanr (non-blocking) ────────────────────────
+        # Only create for paid bookings (not pending-payment bookings).
+        if booking_id and is_paid:
+            await trigger_booking_invoice(data, correlation_id=correlation_id)
 
         # payment_status=pending → booking slot reserved, but payment not yet made.
         #                          Send payment-link messages so the customer can pay.

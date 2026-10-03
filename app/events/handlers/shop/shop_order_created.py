@@ -25,6 +25,7 @@ from app.core.logging import get_logger
 from app.events.handlers.base import HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.integrations.ushbooknpay_client import UshBookNPayClient
+from app.invoicing.triggers import trigger_shop_order_invoice
 from app.notifications.application.channel_resolver import ChannelResolver
 from app.notifications.application.notification_service import NotificationService
 from app.notifications.domain.enums import NotificationStatus
@@ -498,3 +499,7 @@ class ShopOrderCreatedHandler:
                 reason="No valid phone/WhatsApp contact found in event payload",
                 event_id=correlation_id,
             )
+
+        # ── Invoice: create in ushanr for paid orders (non-blocking) ──────────
+        if order_id and str(payment_status).lower() == "success":
+            await trigger_shop_order_invoice(data, correlation_id=correlation_id)

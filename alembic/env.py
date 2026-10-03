@@ -33,6 +33,14 @@ if db_url.startswith("postgresql://") and "asyncpg" not in db_url:
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 elif db_url.startswith("postgresql+psycopg2://"):
     db_url = db_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+
+if "host.docker.internal" in db_url:
+    try:
+        import socket
+        socket.gethostbyname("host.docker.internal")
+    except Exception:
+        db_url = db_url.replace("host.docker.internal", "localhost")
+
 config.set_main_option("sqlalchemy.url", db_url)
 
 

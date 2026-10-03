@@ -24,6 +24,7 @@ from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.integrations.ushauth_client import UshAuthClient
 from app.integrations.ushbooknpay_client import UshBookNPayClient
+from app.invoicing.triggers import trigger_credit_note
 
 logger = get_logger(__name__)
 
@@ -211,3 +212,12 @@ class BookingCancelledHandler:
                 )
             finally:
                 await booknpay_client.aclose()
+
+        # ── 4. Credit note in ushanr for ALL cancellations (non-blocking) ─────
+        if booking_id:
+            await trigger_credit_note(
+                source_document_type="booking",
+                source_document_id=booking_id,
+                notes=f"Cancellation — Booking {booking_number}" if booking_number else None,
+                correlation_id=correlation_id,
+            )
