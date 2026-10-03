@@ -13,6 +13,7 @@ from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.notifications.application.channel_resolver import ChannelResolver
 from app.notifications.application.notification_service import NotificationService
+from app.notifications.domain.enums import NotificationStatus
 from app.notifications.domain.value_objects import NotificationRequest
 
 logger = get_logger(__name__)
@@ -333,22 +334,29 @@ class VoucherRedeemedHandler:
             correlation_id=correlation_id,
         )
 
-        # ── Notify SENDER ────────────────────────────────────────────────────
+        # ── Notify SENDER (skip if sender and recipient are the same person) ─
         sender_details: dict = data.get("sender_details") or {}
         sender_phone = sender_details.get("phone_number") or data.get("sender_phone") or ""
         sender_email = sender_details.get("email") or data.get("sender_email") or ""
 
-        await self._notify_person(
-            envelope=envelope,
-            service=service,
-            vctx=vctx,
-            phone=sender_phone,
-            email=sender_email,
-            name=vctx["sender_name"],
-            audience="sender",
-            voucher_id=voucher_id,
-            correlation_id=correlation_id,
-        )
+        sender_digits = "".join(c for c in sender_phone if c.isdigit())
+        recipient_digits = "".join(c for c in vctx.get("recipient_phone", "") if c.isdigit())
+        is_self_gift = bool(sender_digits and recipient_digits and sender_digits == recipient_digits)
+
+        if not is_self_gift:
+            await self._notify_person(
+                envelope=envelope,
+                service=service,
+                vctx=vctx,
+                phone=sender_phone,
+                email=sender_email,
+                name=vctx["sender_name"],
+                audience="sender",
+                voucher_id=voucher_id,
+                correlation_id=correlation_id,
+            )
+        else:
+            logger.info("voucher_redeemed_sender_skipped_self_gift", voucher_id=voucher_id, phone=sender_phone)
 
     async def _notify_person(
         self,
@@ -366,6 +374,7 @@ class VoucherRedeemedHandler:
         """Send WhatsApp/SMS + Email to a specific person (sender or recipient)."""
         tpl_prefix = f"voucher/redeemed_{audience}"
         party_lang = vctx.get(f"{audience}_language") or "en"
+        whatsapp_sent = False
 
         # WhatsApp
         if phone:
@@ -390,37 +399,50 @@ class VoucherRedeemedHandler:
                         booking_id=voucher_id or None,
                         correlation_id=correlation_id,
                     )
-                    await service.send(req)
-                    logger.info(f"voucher_redeemed_{audience}_whatsapp_sent", voucher_id=voucher_id)
+                    notification = await service.send(req)
+                    status_val = getattr(notification, "status", None)
+                    if status_val in (
+                        NotificationStatus.SENT,
+                        NotificationStatus.DELIVERED,
+                        NotificationStatus.SENT.value,
+                        NotificationStatus.DELIVERED.value,
+                    ) or (notification is not None and not isinstance(status_val, (str, NotificationStatus))):
+                        whatsapp_sent = True
+                    logger.info(
+                        f"voucher_redeemed_{audience}_whatsapp_sent",
+                        voucher_id=voucher_id,
+                        status=str(status_val),
+                    )
             except Exception as exc:
                 logger.warning(f"voucher_redeemed_{audience}_whatsapp_failed", voucher_id=voucher_id, error=str(exc))
 
-            # SMS
-            try:
-                if party_lang == "ar":
-                    sms_body = _redeemed_sms_message_ar(vctx, audience)
-                else:
-                    sms_body = _redeemed_sms_message(vctx, audience)
-                sms_payload = {
-                    "phone_number": phone,
-                    "customer_name": name,
-                    "language_preference": party_lang,
-                }
-                sms_recipient = ChannelResolver.resolve_sms_recipient(sms_payload)
-                if sms_recipient:
-                    req = NotificationRequest(
-                        event_id=envelope.event_id_str,
-                        recipient=sms_recipient,
-                        template_name=f"{tpl_prefix}_sms",
-                        template_context={**vctx, "message_body": sms_body, "audience": audience},
-                        customer_id=None,
-                        booking_id=voucher_id or None,
-                        correlation_id=correlation_id,
-                    )
-                    await service.send(req)
-                    logger.info(f"voucher_redeemed_{audience}_sms_sent", voucher_id=voucher_id)
-            except Exception as exc:
-                logger.warning(f"voucher_redeemed_{audience}_sms_failed", voucher_id=voucher_id, error=str(exc))
+            # SMS fallback (only sent if WhatsApp was NOT sent)
+            if not whatsapp_sent:
+                try:
+                    if party_lang == "ar":
+                        sms_body = _redeemed_sms_message_ar(vctx, audience)
+                    else:
+                        sms_body = _redeemed_sms_message(vctx, audience)
+                    sms_payload = {
+                        "phone_number": phone,
+                        "customer_name": name,
+                        "language_preference": party_lang,
+                    }
+                    sms_recipient = ChannelResolver.resolve_sms_recipient(sms_payload)
+                    if sms_recipient:
+                        req = NotificationRequest(
+                            event_id=envelope.event_id_str,
+                            recipient=sms_recipient,
+                            template_name=f"{tpl_prefix}_sms",
+                            template_context={**vctx, "message_body": sms_body, "audience": audience},
+                            customer_id=None,
+                            booking_id=voucher_id or None,
+                            correlation_id=correlation_id,
+                        )
+                        await service.send(req)
+                        logger.info(f"voucher_redeemed_{audience}_sms_sent", voucher_id=voucher_id)
+                except Exception as exc:
+                    logger.warning(f"voucher_redeemed_{audience}_sms_failed", voucher_id=voucher_id, error=str(exc))
 
         # Email
         if email:

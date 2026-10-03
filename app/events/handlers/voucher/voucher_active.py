@@ -24,7 +24,7 @@ from app.integrations.ushbooknpay_client import UshBookNPayClient
 from app.invoicing.triggers import trigger_voucher_invoice
 from app.notifications.application.channel_resolver import ChannelResolver
 from app.notifications.application.notification_service import NotificationService
-from app.notifications.domain.enums import NotificationChannel
+from app.notifications.domain.enums import NotificationChannel, NotificationStatus
 from app.notifications.domain.value_objects import NotificationRequest, Recipient
 
 logger = get_logger(__name__)
@@ -251,6 +251,11 @@ def _recipient_sms_message(ctx: dict) -> str:
         "",
         url,
     ]
+    if ctx.get("recipient_password"):
+        lines += [
+            "",
+            f"Your temporary password: {ctx['recipient_password']}",
+        ]
     return "\n".join(lines)
 
 
@@ -315,6 +320,11 @@ def _recipient_sms_message_ar(ctx: dict) -> str:
         "",
         url,
     ]
+    if ctx.get("recipient_password"):
+        lines += [
+            "",
+            f"كلمة المرور المؤقتة: {ctx['recipient_password']}",
+        ]
     return "\n".join(lines)
 
 
@@ -359,19 +369,6 @@ class VoucherActiveHandler:
         sender_phone = sender_details.get("phone_number") or data.get("sender_phone") or ""
         sender_name = vctx["sender_name"]
 
-        if sender_phone:
-            await self._notify_sender(
-                envelope=envelope,
-                service=service,
-                vctx=vctx,
-                sender_phone=sender_phone,
-                sender_name=sender_name,
-                voucher_id=voucher_id,
-                correlation_id=correlation_id,
-            )
-        else:
-            logger.info("voucher_active_sender_no_phone", voucher_id=voucher_id)
-
         # ── 3. Notify RECIPIENT ──────────────────────────────────────────────
         recipient_details: dict = data.get("recipient_details") or {}
         recipient_phone = (
@@ -381,6 +378,31 @@ class VoucherActiveHandler:
         )
         recipient_email = recipient_details.get("email") or data.get("recipient_email") or ""
         recipient_name = vctx["recipient_name"]
+
+        # Normalise phone digits to detect self-gifting (purchasing for own phone)
+        sender_digits = "".join(c for c in sender_phone if c.isdigit())
+        recipient_digits = "".join(c for c in recipient_phone if c.isdigit())
+        is_self_gift = bool(sender_digits and recipient_digits and sender_digits == recipient_digits)
+
+        if sender_phone:
+            if is_self_gift:
+                logger.info(
+                    "voucher_active_sender_skipped_self_gift",
+                    voucher_id=voucher_id,
+                    phone=sender_phone,
+                )
+            else:
+                await self._notify_sender(
+                    envelope=envelope,
+                    service=service,
+                    vctx=vctx,
+                    sender_phone=sender_phone,
+                    sender_name=sender_name,
+                    voucher_id=voucher_id,
+                    correlation_id=correlation_id,
+                )
+        else:
+            logger.info("voucher_active_sender_no_phone", voucher_id=voucher_id)
 
         if recipient_phone or recipient_email:
             await self._notify_recipient(
@@ -653,6 +675,7 @@ class VoucherActiveHandler:
     ) -> None:
         """Send WhatsApp/SMS + Email to the gift sender."""
         sender_lang = vctx.get("sender_language") or "en"
+        whatsapp_sent = False
 
         # WhatsApp
         try:
@@ -676,37 +699,50 @@ class VoucherActiveHandler:
                     booking_id=voucher_id or None,
                     correlation_id=correlation_id,
                 )
-                await service.send(req)
-                logger.info("voucher_active_sender_whatsapp_sent", voucher_id=voucher_id)
+                notification = await service.send(req)
+                status_val = getattr(notification, "status", None)
+                if status_val in (
+                    NotificationStatus.SENT,
+                    NotificationStatus.DELIVERED,
+                    NotificationStatus.SENT.value,
+                    NotificationStatus.DELIVERED.value,
+                ) or (notification is not None and not isinstance(status_val, (str, NotificationStatus))):
+                    whatsapp_sent = True
+                logger.info(
+                    "voucher_active_sender_whatsapp_sent",
+                    voucher_id=voucher_id,
+                    status=str(status_val),
+                )
         except Exception as exc:
             logger.warning("voucher_active_sender_whatsapp_failed", voucher_id=voucher_id, error=str(exc))
 
-        # SMS fallback (always also send SMS so sender gets a text record)
-        try:
-            if sender_lang == "ar":
-                sms_body = _sender_sms_message_ar(vctx)
-            else:
-                sms_body = _sender_sms_message(vctx)
-            sender_payload_sms = {
-                "phone_number": sender_phone,
-                "customer_name": sender_name,
-                "language_preference": sender_lang,
-            }
-            sms_recipient = ChannelResolver.resolve_sms_recipient(sender_payload_sms)
-            if sms_recipient:
-                req = NotificationRequest(
-                    event_id=envelope.event_id_str,
-                    recipient=sms_recipient,
-                    template_name="voucher/active_sender_sms",
-                    template_context={**vctx, "message_body": sms_body},
-                    customer_id=None,
-                    booking_id=voucher_id or None,
-                    correlation_id=correlation_id,
-                )
-                await service.send(req)
-                logger.info("voucher_active_sender_sms_sent", voucher_id=voucher_id)
-        except Exception as exc:
-            logger.warning("voucher_active_sender_sms_failed", voucher_id=voucher_id, error=str(exc))
+        # SMS fallback (only sent if WhatsApp was NOT sent)
+        if not whatsapp_sent:
+            try:
+                if sender_lang == "ar":
+                    sms_body = _sender_sms_message_ar(vctx)
+                else:
+                    sms_body = _sender_sms_message(vctx)
+                sender_payload_sms = {
+                    "phone_number": sender_phone,
+                    "customer_name": sender_name,
+                    "language_preference": sender_lang,
+                }
+                sms_recipient = ChannelResolver.resolve_sms_recipient(sender_payload_sms)
+                if sms_recipient:
+                    req = NotificationRequest(
+                        event_id=envelope.event_id_str,
+                        recipient=sms_recipient,
+                        template_name="voucher/active_sender_sms",
+                        template_context={**vctx, "message_body": sms_body},
+                        customer_id=None,
+                        booking_id=voucher_id or None,
+                        correlation_id=correlation_id,
+                    )
+                    await service.send(req)
+                    logger.info("voucher_active_sender_sms_sent", voucher_id=voucher_id)
+            except Exception as exc:
+                logger.warning("voucher_active_sender_sms_failed", voucher_id=voucher_id, error=str(exc))
 
         # Email — sender may have an email in sender_details
         sender_email = (
@@ -759,6 +795,7 @@ class VoucherActiveHandler:
     ) -> None:
         """Send WhatsApp/SMS + Email to the gift recipient with secret_code and link."""
         recipient_lang = vctx.get("recipient_language") or "en"
+        whatsapp_sent = False
 
         # WhatsApp
         if recipient_phone:
@@ -783,37 +820,63 @@ class VoucherActiveHandler:
                         booking_id=voucher_id or None,
                         correlation_id=correlation_id,
                     )
-                    await service.send(req)
-                    logger.info("voucher_active_recipient_whatsapp_sent", voucher_id=voucher_id)
+                    notification = await service.send(req)
+                    status_val = getattr(notification, "status", None)
+                    if status_val in (
+                        NotificationStatus.SENT,
+                        NotificationStatus.DELIVERED,
+                        NotificationStatus.SENT.value,
+                        NotificationStatus.DELIVERED.value,
+                    ) or (notification is not None and not isinstance(status_val, (str, NotificationStatus))):
+                        whatsapp_sent = True
+                    logger.info(
+                        "voucher_active_recipient_whatsapp_sent",
+                        voucher_id=voucher_id,
+                        status=str(status_val),
+                    )
             except Exception as exc:
                 logger.warning("voucher_active_recipient_whatsapp_failed", voucher_id=voucher_id, error=str(exc))
 
-            # SMS — also send so the recipient has the code as a text message
+            # SMS fallback (only sent if WhatsApp was NOT sent)
+            if not whatsapp_sent:
+                try:
+                    if recipient_lang == "ar":
+                        sms_body = _recipient_sms_message_ar(vctx)
+                    else:
+                        sms_body = _recipient_sms_message(vctx)
+                    recipient_payload_sms = {
+                        "phone_number": recipient_phone,
+                        "customer_name": recipient_name,
+                        "language_preference": recipient_lang,
+                    }
+                    sms_recipient = ChannelResolver.resolve_sms_recipient(recipient_payload_sms)
+                    if sms_recipient:
+                        req = NotificationRequest(
+                            event_id=envelope.event_id_str,
+                            recipient=sms_recipient,
+                            template_name="voucher/active_recipient_sms",
+                            template_context={**vctx, "message_body": sms_body},
+                            customer_id=None,
+                            booking_id=voucher_id or None,
+                            correlation_id=correlation_id,
+                        )
+                        await service.send(req)
+                        logger.info("voucher_active_recipient_sms_sent", voucher_id=voucher_id)
+                except Exception as exc:
+                    logger.warning("voucher_active_recipient_sms_failed", voucher_id=voucher_id, error=str(exc))
+
+            # Record in Redis that this recipient was notified (with TTL 24h)
+            # This prevents duplicate welcome notifications if customer.new_created
+            # is processed concurrently or subsequently.
             try:
-                if recipient_lang == "ar":
-                    sms_body = _recipient_sms_message_ar(vctx)
-                else:
-                    sms_body = _recipient_sms_message(vctx)
-                recipient_payload_sms = {
-                    "phone_number": recipient_phone,
-                    "customer_name": recipient_name,
-                    "language_preference": recipient_lang,
-                }
-                sms_recipient = ChannelResolver.resolve_sms_recipient(recipient_payload_sms)
-                if sms_recipient:
-                    req = NotificationRequest(
-                        event_id=envelope.event_id_str,
-                        recipient=sms_recipient,
-                        template_name="voucher/active_recipient_sms",
-                        template_context={**vctx, "message_body": sms_body},
-                        customer_id=None,
-                        booking_id=voucher_id or None,
-                        correlation_id=correlation_id,
-                    )
-                    await service.send(req)
-                    logger.info("voucher_active_recipient_sms_sent", voucher_id=voucher_id)
+                from app.core.redis import get_redis
+                redis_client = get_redis()
+                norm_phone = "".join(c for c in recipient_phone if c.isdigit())
+                if norm_phone:
+                    await redis_client.setex(f"voucher_recipient_notified:{norm_phone}", 86400, "1")
+                    await redis_client.delete(f"voucher_recipient_pending:{norm_phone}")
             except Exception as exc:
-                logger.warning("voucher_active_recipient_sms_failed", voucher_id=voucher_id, error=str(exc))
+                logger.debug("voucher_recipient_redis_set_failed", error=str(exc))
 
         # Email — send independently if available
         if recipient_email:
@@ -843,4 +906,4 @@ class VoucherActiveHandler:
 
         # ── Invoice: create in ushanr (non-blocking) ──────────────────────────
         if voucher_id:
-            await trigger_voucher_invoice(data, correlation_id=correlation_id)
+            await trigger_voucher_invoice(envelope.data, correlation_id=correlation_id)

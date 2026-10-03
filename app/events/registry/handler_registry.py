@@ -192,10 +192,12 @@ def build_default_registry() -> HandlerRegistry:
     # ── Voucher handlers ──────────────────────────────────────────────────────
     from app.events.handlers.voucher.voucher_active import VoucherActiveHandler
     from app.events.handlers.voucher.voucher_redeemed import VoucherRedeemedHandler
+    from app.events.handlers.voucher.voucher_payment_pending import VoucherPaymentPendingHandler
 
     for _h in [
         VoucherActiveHandler(),
         VoucherRedeemedHandler(),
+        VoucherPaymentPendingHandler(),
     ]:
         registry.register(_h)
         _alias_type = _h.event_type.replace(".", "_")

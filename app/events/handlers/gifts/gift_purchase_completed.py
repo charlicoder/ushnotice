@@ -141,17 +141,29 @@ class GiftPurchaseCompletedHandler:
         sender_phone = gctx["sender_phone"]
         sender_name = gctx["sender_name"]
 
+        # Normalise phone digits to detect self-gifting (purchasing for own phone)
+        sender_digits = "".join(c for c in sender_phone if c.isdigit())
+        recipient_digits = "".join(c for c in (gctx.get("recipient_phone") or "") if c.isdigit())
+        is_self_gift = bool(sender_digits and recipient_digits and sender_digits == recipient_digits)
+
         # ── Notify SENDER ─────────────────────────────────────────────────
         if sender_phone:
-            await self._notify_sender(
-                envelope=envelope,
-                service=service,
-                gctx=gctx,
-                sender_phone=sender_phone,
-                sender_name=sender_name,
-                gift_id=gift_id,
-                correlation_id=correlation_id,
-            )
+            if is_self_gift:
+                logger.info(
+                    "gift_purchase_completed_sender_skipped_self_gift",
+                    gift_id=gift_id,
+                    phone=sender_phone,
+                )
+            else:
+                await self._notify_sender(
+                    envelope=envelope,
+                    service=service,
+                    gctx=gctx,
+                    sender_phone=sender_phone,
+                    sender_name=sender_name,
+                    gift_id=gift_id,
+                    correlation_id=correlation_id,
+                )
         else:
             logger.info("gift_purchase_completed_sender_no_phone", gift_id=gift_id)
 
@@ -259,3 +271,14 @@ class GiftPurchaseCompletedHandler:
                 logger.info("gift_purchase_recipient_whatsapp_sent", gift_id=gift_id)
         except Exception as exc:
             logger.warning("gift_purchase_recipient_whatsapp_failed", gift_id=gift_id, error=str(exc))
+
+        # Record in Redis that this recipient was notified (with TTL 24h)
+        try:
+            from app.core.redis import get_redis
+            redis_client = get_redis()
+            norm_phone = "".join(c for c in recipient_phone if c.isdigit())
+            if norm_phone:
+                await redis_client.setex(f"voucher_recipient_notified:{norm_phone}", 86400, "1")
+                await redis_client.delete(f"voucher_recipient_pending:{norm_phone}")
+        except Exception as exc:
+            logger.debug("voucher_recipient_redis_set_failed", error=str(exc))

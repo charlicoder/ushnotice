@@ -28,6 +28,7 @@ from app.events.handlers.voucher.voucher_redeemed import (
     _redeemed_sms_message,
     _redeemed_whatsapp_message,
 )
+from app.events.handlers.voucher.voucher_payment_pending import VoucherPaymentPendingHandler
 from app.events.registry.handler_registry import build_default_registry
 
 
@@ -155,6 +156,11 @@ class TestRecipientMessages:
         msg = _recipient_whatsapp_message(ctx_with_pass)
         assert "*Your Login Password:* 987654" in msg
 
+    def test_sms_message_contains_password_when_provided(self):
+        ctx_with_pass = {**self.ctx, "recipient_password": "987654"}
+        msg = _recipient_sms_message(ctx_with_pass)
+        assert "Your temporary password: 987654" in msg
+
 
 # ── VoucherRedeemedHandler — unit tests ───────────────────────────────────────
 
@@ -221,9 +227,11 @@ class TestRegistry:
         event_types = registry.registered_event_types()
         assert "voucher.active" in event_types
         assert "voucher.redeemed" in event_types
+        assert "voucher.payment_pending" in event_types
         # underscore aliases
         assert "voucher_active" in event_types
         assert "voucher_redeemed" in event_types
+        assert "voucher_payment_pending" in event_types
 
     def test_voucher_active_handler_resolves(self):
         registry = build_default_registry()
@@ -236,3 +244,127 @@ class TestRegistry:
         handlers = registry.resolve("voucher.redeemed")
         assert len(handlers) == 1
         assert isinstance(handlers[0], VoucherRedeemedHandler)
+
+    def test_voucher_payment_pending_handler_resolves(self):
+        registry = build_default_registry()
+        handlers = registry.resolve("voucher.payment_pending")
+        assert len(handlers) == 1
+        assert isinstance(handlers[0], VoucherPaymentPendingHandler)
+
+
+# ── Voucher Deduplication & Fallback tests ─────────────────────────────────────
+
+import uuid
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+from app.events.schemas.envelope import EventEnvelope
+from app.events.handlers.base import HandlerContext
+from app.notifications.domain.enums import NotificationChannel, NotificationStatus
+
+
+def _make_envelope(event_type: str, data: dict):
+    return EventEnvelope(
+        event_id=uuid.uuid4(),
+        event_type=event_type,
+        version=1,
+        occurred_at=datetime.now(tz=timezone.utc),
+        source="ushbooknpay",
+        data=data,
+    )
+
+
+class TestVoucherDeduplication:
+    @pytest.mark.asyncio
+    async def test_voucher_active_skips_sender_when_self_gift(self):
+        handler = VoucherActiveHandler()
+        # Sender phone equals recipient phone
+        data = {
+            **SAMPLE_VOUCHER_DATA,
+            "sender_details": {"name": "Sara", "phone_number": "+96599112233"},
+            "recipient_details": {"name": "Sara", "phone_number": "+96599112233"},
+            "recipient_phone": "+96599112233",
+        }
+        envelope = _make_envelope("voucher.active", data)
+        mock_ctx = MagicMock(spec=HandlerContext)
+        mock_svc = AsyncMock()
+        mock_notification = MagicMock()
+        mock_notification.status = NotificationStatus.SENT
+        mock_svc.send.return_value = mock_notification
+
+        mock_redis = AsyncMock()
+
+        with patch("app.events.handlers.voucher.voucher_active.NotificationService", return_value=mock_svc), \
+             patch("app.events.handlers.voucher.voucher_active.UshBookNPayClient") as mock_book_client, \
+             patch("app.events.handlers.voucher.voucher_active.trigger_voucher_invoice", new=AsyncMock()), \
+             patch("app.core.redis.get_redis", return_value=mock_redis):
+            mock_book_client.return_value._client.post = AsyncMock()
+            mock_book_client.return_value.aclose = AsyncMock()
+            await handler.handle(envelope, mock_ctx)
+
+        # Only recipient WhatsApp notification was sent; sender notification skipped due to self-gift!
+        assert mock_svc.send.call_count == 1
+        sent_req = mock_svc.send.call_args_list[0].args[0]
+        assert sent_req.template_name == "voucher/active_recipient_whatsapp"
+        # Redis key was set to mark recipient notified
+        mock_redis.setex.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_voucher_active_falls_back_to_sms_when_whatsapp_fails(self):
+        handler = VoucherActiveHandler()
+        # Different phones so sender is not skipped
+        data = {
+            **SAMPLE_VOUCHER_DATA,
+            "sender_details": {"name": "Sara", "phone_number": "+96599112233"},
+            "recipient_details": {"name": "Noura", "phone_number": "+96599887766"},
+            "recipient_phone": "+96599887766",
+        }
+        envelope = _make_envelope("voucher.active", data)
+        mock_ctx = MagicMock(spec=HandlerContext)
+        mock_svc = AsyncMock()
+        # Sender WhatsApp succeeds, recipient WhatsApp fails -> recipient SMS fallback succeeds
+        mock_wa_success = MagicMock()
+        mock_wa_success.status = NotificationStatus.SENT
+        mock_sms_success = MagicMock()
+        mock_sms_success.status = NotificationStatus.SENT
+
+        # Sender WA succeeds (1st send), Recipient WA fails (2nd send), Recipient SMS succeeds (3rd send)
+        mock_svc.send.side_effect = [
+            mock_wa_success,
+            Exception("WhatsApp network error"),
+            mock_sms_success,
+        ]
+
+        mock_redis = AsyncMock()
+
+        with patch("app.events.handlers.voucher.voucher_active.NotificationService", return_value=mock_svc), \
+             patch("app.events.handlers.voucher.voucher_active.UshBookNPayClient") as mock_book_client, \
+             patch("app.events.handlers.voucher.voucher_active.trigger_voucher_invoice", new=AsyncMock()), \
+             patch("app.core.redis.get_redis", return_value=mock_redis):
+            mock_book_client.return_value._client.post = AsyncMock()
+            mock_book_client.return_value.aclose = AsyncMock()
+            await handler.handle(envelope, mock_ctx)
+
+        channels = [call.args[0].recipient.channel for call in mock_svc.send.call_args_list]
+        assert NotificationChannel.WHATSAPP in channels
+        assert NotificationChannel.SMS in channels
+
+    @pytest.mark.asyncio
+    async def test_voucher_payment_pending_caches_recipient_in_redis(self):
+        handler = VoucherPaymentPendingHandler()
+        data = {
+            "id": "b20e155d-6070-49c4-bdf2-e1eb2b6b15f1",
+            "recipient_phone": "+96599112233",
+        }
+        envelope = _make_envelope("voucher.payment_pending", data)
+        mock_ctx = MagicMock(spec=HandlerContext)
+        mock_redis = AsyncMock()
+
+        with patch("app.core.redis.get_redis", return_value=mock_redis):
+            await handler.handle(envelope, mock_ctx)
+
+        mock_redis.setex.assert_awaited_once_with(
+            "voucher_recipient_pending:96599112233",
+            3600,
+            "1",
+        )
+

@@ -32,14 +32,96 @@ from app.providers.factory import (
 logger = get_logger(__name__)
 
 
+_DEDUP_TTL_SECONDS = 24 * 60 * 60
+# Templates whose notifications are scoped to a business object (voucher/gift id
+# passed as ``booking_id``) rather than to a single event, so that the same gift
+# republished under a new event_id still produces exactly one message per recipient.
+_OBJECT_SCOPED_PREFIXES = ("voucher/", "gifts/")
+
+
 class NotificationService:
     """Orchestrates notification dispatch, persistence, and delivery audit."""
 
     def __init__(self, ctx: HandlerContext) -> None:
         self._ctx = ctx
 
+    @staticmethod
+    def _dedup_key(req: NotificationRequest) -> str:
+        template = req.template_name or ""
+        scope = (
+            req.booking_id
+            if req.booking_id and template.startswith(_OBJECT_SCOPED_PREFIXES)
+            else req.event_id
+        )
+        return (
+            f"notif_sent:{template}:{req.recipient.channel.value}:"
+            f"{req.recipient.address}:{scope}"
+        )
+
+    @staticmethod
+    async def _claim(key: str) -> bool | None:
+        """Atomically claim the right to send. True=claimed, False=duplicate, None=Redis unavailable."""
+        try:
+            from app.core.redis import get_redis
+
+            return bool(await get_redis().set(key, "1", nx=True, ex=_DEDUP_TTL_SECONDS))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("notification_dedup_unavailable", error=str(exc))
+            return None
+
+    @staticmethod
+    async def _release(key: str) -> None:
+        try:
+            from app.core.redis import get_redis
+
+            await get_redis().delete(key)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("notification_dedup_release_failed", error=str(exc))
+
     async def send(self, req: NotificationRequest) -> Notification:
-        """Create and dispatch a notification synchronously or via worker.
+        """Send a notification at most once per (template, channel, recipient, scope).
+
+        The claim lives in Redis (not the DB) on purpose: when a handler fails
+        after sending, the router rolls back the DB session — erasing the SENT
+        record — and SQS redelivers the event. A DB-based check would then miss
+        the earlier send and the recipient would receive the same SMS repeatedly.
+        """
+        key = self._dedup_key(req)
+        claimed = await self._claim(key)
+        if claimed is False:
+            logger.info(
+                "notification_duplicate_suppressed",
+                template=req.template_name,
+                channel=req.recipient.channel.value,
+                recipient=req.recipient.masked_address,
+                event_id=req.event_id,
+            )
+            # Transient (unpersisted) record flagged SENT so callers don't fall back to another channel.
+            return Notification(
+                event_id=req.event_id,
+                channel=req.recipient.channel.value,
+                recipient=req.recipient.address,
+                template_name=req.template_name,
+                status=NotificationStatus.SENT.value,
+            )
+
+        try:
+            notification = await self._send_impl(req)
+        except Exception:
+            if claimed:
+                await self._release(key)
+            raise
+
+        if claimed and notification.status not in (
+            NotificationStatus.SENT.value,
+            NotificationStatus.DELIVERED.value,
+        ):
+            # Delivery failed — allow a later retry to send.
+            await self._release(key)
+        return notification
+
+    async def _send_impl(self, req: NotificationRequest) -> Notification:
+        """Create and dispatch a notification.
 
         Args:
             req: NotificationRequest containing recipient, template, and context.

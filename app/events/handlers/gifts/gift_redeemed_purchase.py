@@ -46,33 +46,41 @@ class GiftRedeemedPurchaseHandler:
             or "en"
         ).lower()
 
+        # Normalise phone digits to detect self-gifting
+        sender_digits = "".join(c for c in sender_phone if c.isdigit())
+        recipient_digits = "".join(c for c in recipient_phone if c.isdigit())
+        is_self_gift = bool(sender_digits and recipient_digits and sender_digits == recipient_digits)
+
         # ── Notify SENDER ─────────────────────────────────────────────────
         if sender_phone:
-            try:
-                if sender_lang == "ar":
-                    wa_body_sender = f"🎁 تم استخدام الهدية — قام {recipient_name} باستخدام هديتك في USHSPA!"
-                else:
-                    wa_body_sender = f"🎁 Gift Redeemed — {recipient_name} has redeemed your gift at USHSPA!"
-                sender_payload = {
-                    "phone_number": sender_phone,
-                    "customer_name": sender_name,
-                    "language_preference": sender_lang,
-                }
-                recipient_obj = ChannelResolver.resolve_whatsapp_recipient(sender_payload)
-                if recipient_obj:
-                    req = NotificationRequest(
-                        event_id=envelope.event_id_str,
-                        recipient=recipient_obj,
-                        template_name="gifts/redeemed_sender_whatsapp",
-                        template_context={"message_body": wa_body_sender},
-                        customer_id=None,
-                        booking_id=gift_id or None,
-                        correlation_id=correlation_id,
-                    )
-                    await service.send(req)
-                    logger.info("gift_redeemed_sender_whatsapp_sent", gift_id=gift_id)
-            except Exception as exc:
-                logger.warning("gift_redeemed_sender_whatsapp_failed", gift_id=gift_id, error=str(exc))
+            if is_self_gift:
+                logger.info("gift_redeemed_sender_skipped_self_gift", gift_id=gift_id)
+            else:
+                try:
+                    if sender_lang == "ar":
+                        wa_body_sender = f"🎁 تم استخدام الهدية — قام {recipient_name} باستخدام هديتك في USHSPA!"
+                    else:
+                        wa_body_sender = f"🎁 Gift Redeemed — {recipient_name} has redeemed your gift at USHSPA!"
+                    sender_payload = {
+                        "phone_number": sender_phone,
+                        "customer_name": sender_name,
+                        "language_preference": sender_lang,
+                    }
+                    recipient_obj = ChannelResolver.resolve_whatsapp_recipient(sender_payload)
+                    if recipient_obj:
+                        req = NotificationRequest(
+                            event_id=envelope.event_id_str,
+                            recipient=recipient_obj,
+                            template_name="gifts/redeemed_sender_whatsapp",
+                            template_context={"message_body": wa_body_sender},
+                            customer_id=None,
+                            booking_id=gift_id or None,
+                            correlation_id=correlation_id,
+                        )
+                        await service.send(req)
+                        logger.info("gift_redeemed_sender_whatsapp_sent", gift_id=gift_id)
+                except Exception as exc:
+                    logger.warning("gift_redeemed_sender_whatsapp_failed", gift_id=gift_id, error=str(exc))
         else:
             logger.info("gift_redeemed_sender_no_phone", gift_id=gift_id)
 
