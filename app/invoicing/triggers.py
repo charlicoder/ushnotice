@@ -17,6 +17,7 @@ Functions
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from app.core.config import get_settings
@@ -161,6 +162,10 @@ async def trigger_booking_invoice(
         )
 
         # 2. Create + post the invoice
+        p_status = str(data.get("payment_status") or "").lower()
+        is_paid = p_status in ("paid", "success", "rewarded") or bool(data.get("payment_id"))
+        tot_amount = Decimal(str(data.get("total_amount") or 0))
+
         result = await client.create_invoice(
             company_id=company_id,
             partner_id=partner_id,
@@ -172,6 +177,10 @@ async def trigger_booking_invoice(
             currency_code="KWD",
             notes=notes,
             lines=lines,
+            is_paid=is_paid,
+            payment_status=p_status or "paid",
+            amount_paid=tot_amount,
+            payment_id=str(data.get("payment_id") or ""),
         )
         await _link_invoice_to_payments("booking", booking_id, result)
         logger.info(
@@ -233,6 +242,7 @@ async def trigger_shop_order_invoice(
             name=customer_name,
             phone=customer_phone,
         )
+        tot_amount = Decimal(str(data.get("total_amount") or 0))
         result = await client.create_invoice(
             company_id=company_id,
             partner_id=partner_id,
@@ -244,6 +254,10 @@ async def trigger_shop_order_invoice(
             currency_code=str(data.get("currency") or "KWD"),
             notes=f"Shop Order {order_number}" if order_number else f"Shop Order {order_id}",
             lines=lines,
+            is_paid=True,
+            payment_status="paid",
+            amount_paid=tot_amount,
+            payment_id=str(data.get("payment_id") or ""),
         )
         await _link_invoice_to_payments("shop_order", order_id, result)
         logger.info(
@@ -300,6 +314,7 @@ async def trigger_gift_purchase_invoice(
             name=sender_name,
             phone=sender_phone,
         )
+        tot_amount = Decimal(str(data.get("total_amount") or 0))
         result = await client.create_invoice(
             company_id=company_id,
             partner_id=partner_id,
@@ -311,6 +326,10 @@ async def trigger_gift_purchase_invoice(
             currency_code="KWD",
             notes=f"Gift Voucher Purchase{f' — {public_token}' if public_token else ''}",
             lines=lines,
+            is_paid=True,
+            payment_status="paid",
+            amount_paid=tot_amount,
+            payment_id=str(data.get("payment_id") or ""),
         )
         await _link_invoice_to_payments("gift_voucher_purchase", purchase_id, result)
         logger.info(
@@ -371,6 +390,7 @@ async def trigger_voucher_invoice(
             name=sender_name,
             phone=sender_phone,
         )
+        tot_amount = Decimal(str(data.get("total_amount") or 0))
         result = await client.create_invoice(
             company_id=company_id,
             partner_id=partner_id,
@@ -382,6 +402,10 @@ async def trigger_voucher_invoice(
             currency_code="KWD",
             notes=f"Gift Voucher{f' {voucher_number}' if voucher_number else ''}",
             lines=lines,
+            is_paid=True,
+            payment_status="paid",
+            amount_paid=tot_amount,
+            payment_id=str(data.get("payment_id") or ""),
         )
         await _link_invoice_to_payments("gift_voucher", voucher_id, result)
         logger.info(

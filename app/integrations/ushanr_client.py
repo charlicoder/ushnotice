@@ -161,6 +161,11 @@ class UshanrClient:
         currency_code: str = "KWD",
         notes: str | None = None,
         lines: list[dict[str, Any]],
+        is_paid: bool | None = None,
+        payment_status: str | None = None,
+        amount_paid: Decimal | float | None = None,
+        payment_id: str | None = None,
+        payment_reference: str | None = None,
     ) -> dict[str, Any]:
         """
         Create and auto-post an invoice in ushanr from a source document.
@@ -202,7 +207,42 @@ class UshanrClient:
                 for ln in lines
             ],
         }
+        if is_paid is not None:
+            body["is_paid"] = is_paid
+        if payment_status is not None:
+            body["payment_status"] = payment_status
+        if amount_paid is not None:
+            body["amount_paid"] = float(amount_paid)
+        if payment_id:
+            body["payment_id"] = str(payment_id)
+        if payment_reference:
+            body["payment_reference"] = str(payment_reference)
         return await self._post("/api/v1/internal/invoices/from-source/", body)
+
+    async def mark_invoice_paid(
+        self,
+        *,
+        invoice_id: str | None = None,
+        invoice_name: str | None = None,
+        source_document_type: str | None = None,
+        source_document_id: str | None = None,
+        amount_paid: float | Decimal | None = None,
+        payment_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Mark an invoice as paid via internal endpoint."""
+        body: dict[str, Any] = {}
+        if invoice_id:
+            body["invoice_id"] = str(invoice_id)
+        if invoice_name:
+            body["invoice_name"] = str(invoice_name)
+        if source_document_type and source_document_id:
+            body["source_document_type"] = str(source_document_type)
+            body["source_document_id"] = str(source_document_id)
+        if amount_paid is not None:
+            body["amount_paid"] = float(amount_paid)
+        if payment_id:
+            body["payment_id"] = str(payment_id)
+        return await self._post("/api/v1/internal/invoices/mark-paid/", body)
 
     async def create_credit_note(
         self,

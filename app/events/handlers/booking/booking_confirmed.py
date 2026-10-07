@@ -308,12 +308,17 @@ class BookingConfirmedHandler:
         booking_type: str = str(data.get("booking_type") or "branch")
         # Payment record should be created when:
         #   a) payment_data.is_paid == True  (explicit flag from gateway callback), OR
-        #   b) event-level payment_status == "success" (booking created with status=confirmed+payment_status=success)
+        #   b) event-level payment_status in ("success", "paid", "completed", "successful"), OR
+        #   c) payment_data.status in ("success", "paid", "completed", "successful"), OR
+        #   d) payment_id present
         _event_payment_status: str = str(data.get("payment_status") or "").lower()
+        _pdata_status: str = str(payment_data.get("status") or "").lower()
         is_paid: bool = (
             payment_data.get("is_paid") is True
             or payment_data.get("is_paid") == "true"
-            or _event_payment_status == "success"
+            or _event_payment_status in ("success", "paid", "completed", "successful", "rewarded")
+            or _pdata_status in ("success", "paid", "completed", "successful")
+            or bool(data.get("payment_id"))
         )
 
         # Detect pending-payment scenario: booking confirmed but customer hasn't paid yet
@@ -784,6 +789,7 @@ class BookingConfirmedHandler:
                     # ── Booking data snapshot ──────────────────────────────
                     "booking_data": {
                         "booking_id": booking_id,
+                        "booking_number": str(data.get("booking_number") or context.get("booking_number") or ""),
                         "service_id": str(data.get("service_id") or ""),
                         "service_name": str(data.get("service_name") or ""),
                         "branch_id": str(data.get("branch_id") or ""),
