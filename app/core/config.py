@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
     LOG_LEVEL: str = "INFO"
+    TIMEZONE: str = "Asia/Kuwait"
 
     # ── Database (PostgreSQL async) ───────────────────────────────────────────
     DATABASE_URL: str = Field(

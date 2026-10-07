@@ -15,7 +15,8 @@ Indexes are defined on all commonly-queried columns per section 48 of the spec.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
     JSON,
@@ -43,9 +44,17 @@ from app.notifications.domain.enums import (
     NotificationStatus,
 )
 
+_KUWAIT_TZ = ZoneInfo("Asia/Kuwait")
+
+
+def _now_kuwait() -> datetime:
+    """Asia/Kuwait wall-clock time labelled UTC (platform-wide convention)."""
+    return datetime.now(_KUWAIT_TZ).replace(tzinfo=timezone.utc)
+
 
 def _uuid() -> str:
     return str(uuid.uuid4())
+
 
 
 class Event(Base):
@@ -67,7 +76,7 @@ class Event(Base):
     causation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     received_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_now_kuwait
     )
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(
@@ -162,13 +171,14 @@ class Notification(Base):
     provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_now_kuwait
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
-        onupdate=func.now(),
+        default=_now_kuwait,
+        onupdate=_now_kuwait,
     )
     correlation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
@@ -218,7 +228,7 @@ class NotificationStatusHistory(Base):
     to_status: Mapped[str] = mapped_column(String(20), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_now_kuwait
     )
 
     # Relationships
@@ -254,7 +264,7 @@ class NotificationAttempt(Base):
         String(20), nullable=False, default=AttemptStatus.PENDING.value
     )
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_now_kuwait
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -311,7 +321,7 @@ class ApiRequest(Base):
     request_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     correlation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_now_kuwait
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
