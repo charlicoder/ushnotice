@@ -533,5 +533,39 @@ class UshBookNPayClient:
             correlation_id=correlation_id,
         )
 
+    async def link_payment_invoice(
+        self,
+        *,
+        source_type: str,
+        source_id: str,
+        invoice_number: str,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Set invoice_number on the payments of a source document (ushbooknpay)."""
+        return await self._client.post(
+            "/api/v1/payments/link-invoice/",
+            json={
+                "source_type": source_type,
+                "source_id": source_id,
+                "invoice_number": invoice_number,
+            },
+            correlation_id=correlation_id,
+        )
+
+    async def link_booking_invoice(
+        self,
+        *,
+        booking_id: str,
+        invoice_number: str,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Set invoice_number directly on the booking (ushbooknpay)."""
+        return await self._client.post(
+            f"/api/v1/bookings/{booking_id}/invoice/",
+            json={"invoice_number": invoice_number},
+            correlation_id=correlation_id,
+        )
+
     async def aclose(self) -> None:
+
         await self._client.aclose()

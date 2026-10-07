@@ -22,6 +22,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.integrations.ushanr_client import UshanrClient
+from app.integrations.ushbooknpay_client import UshBookNPayClient
 from app.invoicing.invoice_helper import (
     build_booking_invoice_lines,
     build_gift_purchase_invoice_lines,
@@ -42,6 +43,45 @@ def _invoicing_enabled() -> bool:
     """True when all three required ushanr UUID settings are configured."""
     company_id, journal_id, revenue_acct = _get_ids()
     return bool(company_id and journal_id and revenue_acct)
+
+
+async def _link_invoice_to_payments(
+    source_type: str, source_id: str, result: dict[str, Any], correlation_id: str | None = None
+) -> None:
+    """Push the new invoice number onto the payments of the source document (non-blocking)."""
+    invoice_number = result.get("invoice_name")
+    if not invoice_number:
+        return
+    pay_client = UshBookNPayClient()
+    try:
+        await pay_client.link_payment_invoice(
+            source_type=source_type,
+            source_id=str(source_id),
+            invoice_number=invoice_number,
+            correlation_id=correlation_id,
+        )
+        if source_type == "booking":
+            try:
+                await pay_client.link_booking_invoice(
+                    booking_id=str(source_id),
+                    invoice_number=invoice_number,
+                    correlation_id=correlation_id,
+                )
+            except Exception as b_exc:
+                logger.debug("booking_invoice_direct_link_warning", booking_id=str(source_id), error=str(b_exc))
+    except Exception as exc:
+
+        logger.warning(
+            "payment_invoice_link_failed",
+            source_type=source_type,
+            source_id=str(source_id),
+            error=str(exc),
+        )
+    finally:
+        try:
+            await pay_client.aclose()
+        except Exception:
+            pass
 
 
 async def trigger_booking_invoice(
@@ -90,10 +130,10 @@ async def trigger_booking_invoice(
         or data.get("appointment_start", "")
     )
 
-    # Determine invoice date (appointment date or today)
+    # Invoice date is always the date the invoice record is created
     try:
         if appointment_date:
-            inv_date_str = str(appointment_date)[:10]  # take date portion
+            inv_date_str = date.today().isoformat()  # invoice date = creation date
         else:
             inv_date_str = date.today().isoformat()
     except Exception:
@@ -133,6 +173,7 @@ async def trigger_booking_invoice(
             notes=notes,
             lines=lines,
         )
+        await _link_invoice_to_payments("booking", booking_id, result)
         logger.info(
             "booking_invoice_created",
             invoice_id=result.get("invoice_id"),
@@ -204,6 +245,7 @@ async def trigger_shop_order_invoice(
             notes=f"Shop Order {order_number}" if order_number else f"Shop Order {order_id}",
             lines=lines,
         )
+        await _link_invoice_to_payments("shop_order", order_id, result)
         logger.info(
             "shop_order_invoice_created",
             invoice_id=result.get("invoice_id"),
@@ -270,6 +312,7 @@ async def trigger_gift_purchase_invoice(
             notes=f"Gift Voucher Purchase{f' — {public_token}' if public_token else ''}",
             lines=lines,
         )
+        await _link_invoice_to_payments("gift_voucher_purchase", purchase_id, result)
         logger.info(
             "gift_purchase_invoice_created",
             invoice_id=result.get("invoice_id"),
@@ -340,6 +383,7 @@ async def trigger_voucher_invoice(
             notes=f"Gift Voucher{f' {voucher_number}' if voucher_number else ''}",
             lines=lines,
         )
+        await _link_invoice_to_payments("gift_voucher", voucher_id, result)
         logger.info(
             "voucher_invoice_created",
             invoice_id=result.get("invoice_id"),
