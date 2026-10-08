@@ -161,6 +161,18 @@ class TestRecipientMessages:
         msg = _recipient_sms_message(ctx_with_pass)
         assert "Your temporary password: 987654" in msg
 
+    def test_whatsapp_message_contains_account_created_when_new_user_without_password(self):
+        ctx_new_user = {**self.ctx, "recipient_password": "", "is_new_user": True}
+        msg = _recipient_whatsapp_message(ctx_new_user)
+        assert "Account Created" in msg
+        assert "*Your Login Password:*" not in msg
+
+    def test_sms_message_contains_set_password_when_new_user_without_password(self):
+        ctx_new_user = {**self.ctx, "recipient_password": "", "is_new_user": True}
+        msg = _recipient_sms_message(ctx_new_user)
+        assert "A new user account has been created for you. Download our app and set your password:" in msg
+        assert "Your temporary password:" not in msg
+
 
 # ── VoucherRedeemedHandler — unit tests ───────────────────────────────────────
 

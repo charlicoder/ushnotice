@@ -163,3 +163,57 @@ async def test_customer_new_created_template_renders_password():
         context={"customer_name": "سارة", "password": "654321"},
     )
     assert "كلمة المرور الخاصة بك: 654321" in body_ar
+
+
+@pytest.mark.asyncio
+async def test_customer_new_created_sends_sms_directly_when_without_password():
+    handler = CustomerNewCreatedHandler()
+    data = {
+        "user_id": str(uuid.uuid4()),
+        "name": "Sarah Connor",
+        "phone_number": "+96599112233",
+        "without_password": True,
+        "password": "",
+    }
+    envelope = _make_customer_new_created_envelope(data)
+    mock_ctx = MagicMock(spec=HandlerContext)
+    mock_svc = AsyncMock()
+
+    mock_notification = MagicMock()
+    mock_notification.status = NotificationStatus.SENT
+    mock_svc.send.return_value = mock_notification
+
+    with patch(
+        "app.events.handlers.auth.customer_new_created.NotificationService",
+        return_value=mock_svc,
+    ):
+        await handler.handle(envelope, mock_ctx)
+
+    assert mock_svc.send.call_count == 1
+    sent_request = mock_svc.send.call_args_list[0].args[0]
+    assert sent_request.recipient.channel == NotificationChannel.SMS
+    assert sent_request.template_name == "user/customer_new_created"
+    assert sent_request.template_context["password"] == ""
+
+
+def test_customer_new_created_template_renders_without_password():
+    from app.templates.renderer import TemplateRenderer
+
+    renderer = TemplateRenderer()
+    body_en = renderer.render(
+        "user/customer_new_created",
+        lang="en",
+        context={"customer_name": "Sarah", "password": ""},
+    )
+    assert "Download our app and set your password:" in body_en
+    assert "Your password is:" not in body_en
+
+    body_ar = renderer.render(
+        "user/customer_new_created",
+        lang="ar",
+        context={"customer_name": "سارة", "password": ""},
+    )
+    assert "حمّل تطبيقنا وعيّن كلمة المرور الخاصة بك:" in body_ar
+    assert "تم إنشاء حسابك بنجاح. كلمة المرور" not in body_ar
+
+

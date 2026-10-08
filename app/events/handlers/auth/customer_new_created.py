@@ -40,8 +40,46 @@ class CustomerNewCreatedHandler:
         customer_id = str(data.get("user_id") or data.get("customer_id") or "")
         phone = str(data.get("phone_number") or data.get("phone") or "")
         norm_phone = "".join(c for c in phone if c.isdigit())
+        without_password = bool(data.get("without_password") or not password)
 
-        # Check if recipient is part of a gift voucher purchase
+        # When created without password (e.g. gift recipient who is a new customer),
+        # send SMS directly as requested:
+        # "send sms saying new user is create and download our app and set your password"
+        if without_password:
+            try:
+                sms_recipient = ChannelResolver.resolve_sms_recipient(data)
+                if sms_recipient:
+                    req_sms = NotificationRequest(
+                        event_id=envelope.event_id_str,
+                        recipient=sms_recipient,
+                        template_name="user/customer_new_created",
+                        template_context={
+                            "customer_name": customer_name,
+                            "password": "",
+                        },
+                        customer_id=customer_id,
+                        correlation_id=envelope.correlation_id_str,
+                    )
+                    await service.send(req_sms)
+                    logger.info(
+                        "Welcome SMS sent for new customer created without password",
+                        event_id=envelope.event_id_str,
+                        phone=sms_recipient.address,
+                    )
+                else:
+                    logger.warning(
+                        "No phone number in customer.new_created event — skipping SMS",
+                        event_id=envelope.event_id_str,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Welcome SMS failed for new customer",
+                    event_id=envelope.event_id_str,
+                    error=str(exc),
+                )
+            return
+
+        # Check if recipient is part of a gift voucher purchase (legacy password flow)
         if norm_phone:
             try:
                 import asyncio

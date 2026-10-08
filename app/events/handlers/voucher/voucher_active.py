@@ -80,6 +80,13 @@ def _build_voucher_context(data: dict) -> dict:
         or "en"
     ).lower()
 
+    is_new_user = bool(
+        recipient_details.get("is_new_user")
+        or recipient_details.get("created")
+        or data.get("is_new_user")
+        or data.get("is_new_recipient")
+    )
+
     return {
         "voucher_id": str(data.get("id") or ""),
         "voucher_number": str(data.get("voucher_number") or ""),
@@ -106,6 +113,7 @@ def _build_voucher_context(data: dict) -> dict:
         "recipient_email": recipient_details.get("email") or data.get("recipient_email") or "",
         "recipient_password": str(recipient_details.get("password") or data.get("recipient_password") or ""),
         "recipient_language": recipient_language,
+        "is_new_user": is_new_user,
     }
 
 
@@ -216,6 +224,11 @@ def _recipient_whatsapp_message(ctx: dict) -> str:
             "",
             f"🔑 *Your Login Password:* {ctx['recipient_password']}",
         ]
+    elif ctx.get("is_new_user"):
+        lines += [
+            "",
+            "✨ *Account Created:* A new account has been created for you. Download our app and set your password.",
+        ]
     lines += [
         "",
         f"🌐 *View Your Gift Card:* {ctx['gift_card_url']}",
@@ -256,6 +269,12 @@ def _recipient_sms_message(ctx: dict) -> str:
             "",
             f"Your temporary password: {ctx['recipient_password']}",
         ]
+    elif ctx.get("is_new_user"):
+        lines += [
+            "",
+            "A new user account has been created for you. Download our app and set your password:",
+            ctx.get("app_install_url") or _APP_INSTALL_URL,
+        ]
     return "\n".join(lines)
 
 
@@ -284,6 +303,11 @@ def _recipient_whatsapp_message_ar(ctx: dict) -> str:
         lines += [
             "",
             f"🔑 *كلمة المرور الخاصة بك:* {ctx['recipient_password']}",
+        ]
+    elif ctx.get("is_new_user"):
+        lines += [
+            "",
+            "✨ *تم إنشاء الحساب:* تم إنشاء حساب جديد لك. حمّل تطبيقنا وعيّن كلمة المرور الخاصة بك.",
         ]
     lines += [
         "",
@@ -324,6 +348,12 @@ def _recipient_sms_message_ar(ctx: dict) -> str:
         lines += [
             "",
             f"كلمة المرور المؤقتة: {ctx['recipient_password']}",
+        ]
+    elif ctx.get("is_new_user"):
+        lines += [
+            "",
+            "تم إنشاء حساب جديد لك. حمّل تطبيقنا وعيّن كلمة المرور الخاصة بك:",
+            ctx.get("app_install_url") or _APP_INSTALL_URL,
         ]
     return "\n".join(lines)
 

@@ -44,6 +44,13 @@ def _build_gift_context(data: dict) -> dict:
     sender_name = sender_data.get("name") or data.get("sender_id") or "A generous friend"
     recipient_name = recipient_data.get("name") or "Valued Customer"
 
+    is_new_user = bool(
+        recipient_data.get("is_new_user")
+        or recipient_data.get("created")
+        or data.get("is_new_user")
+        or data.get("is_new_recipient")
+    )
+
     return {
         "id": str(data.get("id") or ""),
         "gift_type": str(data.get("gift_type") or ""),
@@ -56,6 +63,7 @@ def _build_gift_context(data: dict) -> dict:
         "expire_date_raw": expire_raw,
         "gift_message": data.get("gift_message") or "",
         "gift_card_url": gift_card_url,
+        "app_install_url": _APP_INSTALL_URL,
         "sender_id": str(data.get("sender_id") or ""),
         "sender_name": sender_name,
         "sender_phone": sender_data.get("phone_number") or "",
@@ -68,6 +76,7 @@ def _build_gift_context(data: dict) -> dict:
         "recipient_language": str(data.get("recipient_language") or recipient_data.get("language_preference") or recipient_data.get("language") or "en").lower(),
         "payment_provider": str(data.get("payment_provider") or ""),
         "payment_through": str(data.get("payment_through") or ""),
+        "is_new_user": is_new_user,
     }
 
 
@@ -104,7 +113,12 @@ def _sender_whatsapp_message_ar(ctx: dict) -> str:
 
 
 def _recipient_whatsapp_message_en(ctx: dict) -> str:
-    pass_part = f"\nYour Login Password: {ctx['recipient_password']}" if ctx.get("recipient_password") else ""
+    if ctx.get("recipient_password"):
+        pass_part = f"\nYour Login Password: {ctx['recipient_password']}"
+    elif ctx.get("is_new_user"):
+        pass_part = f"\nA new account has been created for you. Download our app and set your password:\n{ctx.get('app_install_url') or _APP_INSTALL_URL}"
+    else:
+        pass_part = ""
     return (
         f"🎁 You received a gift from {ctx['sender_name']}!\n\n"
         f"Your Secret Code: {ctx['secret_code']}\n"
@@ -114,7 +128,12 @@ def _recipient_whatsapp_message_en(ctx: dict) -> str:
 
 
 def _recipient_whatsapp_message_ar(ctx: dict) -> str:
-    pass_part = f"\nكلمة المرور لتسجيل الدخول: {ctx['recipient_password']}" if ctx.get("recipient_password") else ""
+    if ctx.get("recipient_password"):
+        pass_part = f"\nكلمة المرور لتسجيل الدخول: {ctx['recipient_password']}"
+    elif ctx.get("is_new_user"):
+        pass_part = f"\nتم إنشاء حساب جديد لك. حمّل تطبيقنا وعيّن كلمة المرور الخاصة بك:\n{ctx.get('app_install_url') or _APP_INSTALL_URL}"
+    else:
+        pass_part = ""
     return (
         f"🎁 لقد استلمت هدية من {ctx['sender_name']}!\n\n"
         f"رمز الهدية السري: {ctx['secret_code']}\n"
