@@ -152,6 +152,7 @@ def build_default_registry() -> HandlerRegistry:
     from app.events.handlers.booking.reschedule_request import RescheduleRequestHandler
     from app.events.handlers.booking.booking_payment_status_success import BookingPaymentStatusSuccessHandler
     from app.events.handlers.booking.booking_updated import BookingUpdatedHandler
+    from app.events.handlers.booking.refund_completed import RefundCompletedHandler
 
     for _h in [
         BookingCancelledHandler(),
@@ -162,6 +163,7 @@ def build_default_registry() -> HandlerRegistry:
         RescheduleRequestHandler(),
         BookingPaymentStatusSuccessHandler(),
         BookingUpdatedHandler(),
+        RefundCompletedHandler(),
     ]:
         registry.register(_h)
         _alias_type = _h.event_type.replace(".", "_")

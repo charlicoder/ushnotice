@@ -432,6 +432,12 @@ async def trigger_credit_note(
     source_document_id: str,
     notes: str | None = None,
     correlation_id: str | None = None,
+    cancellation_fee: float | Decimal | None = None,
+    refund_amount: float | Decimal | None = None,
+    refund_method: str | None = None,
+    refund_number: str | None = None,
+    branch_id: str | None = None,
+    processed_by: str | None = None,
 ) -> None:
     """
     Create a credit note in ushanr reversing the invoice for the given source document.
@@ -456,6 +462,12 @@ async def trigger_credit_note(
             source_document_id=source_document_id,
             notes=notes,
             cancellation_date=date.today(),
+            cancellation_fee=cancellation_fee,
+            refund_amount=refund_amount,
+            refund_method=refund_method,
+            refund_number=refund_number,
+            branch_id=branch_id,
+            processed_by=processed_by,
         )
         logger.info(
             "credit_note_created",

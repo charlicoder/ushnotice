@@ -253,6 +253,12 @@ class UshanrClient:
         source_document_id: str,
         notes: str | None = None,
         cancellation_date: date | str | None = None,
+        cancellation_fee: float | Decimal | None = None,
+        refund_amount: float | Decimal | None = None,
+        refund_method: str | None = None,
+        refund_number: str | None = None,
+        branch_id: str | None = None,
+        processed_by: str | None = None,
     ) -> dict[str, Any]:
         """
         Create a credit note reversing the invoice for a source document.
@@ -271,6 +277,19 @@ class UshanrClient:
                 else cancellation_date
             ),
         }
+        if cancellation_fee is not None:
+            body["cancellation_fee"] = float(cancellation_fee)
+        if refund_amount is not None:
+            body["refund_amount"] = float(refund_amount)
+        if refund_method:
+            body["refund_method"] = str(refund_method)
+        if refund_number:
+            body["refund_number"] = str(refund_number)
+        if branch_id:
+            body["branch_id"] = str(branch_id)
+        if processed_by:
+            body["processed_by"] = str(processed_by)
+
         return await self._post("/api/v1/internal/invoices/credit-note/", body)
 
     async def aclose(self) -> None:

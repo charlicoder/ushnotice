@@ -183,9 +183,10 @@ class BookingCancelledHandler:
                 data.get("change_by_user_data")
                 or ({"source": "ushnotice", "reason": str(data.get("cancellation_reason") or data.get("reason") or "Booking cancelled")})
             )
+            patch_resp = None
             booknpay_client = UshBookNPayClient()
             try:
-                await booknpay_client.update_booking_status(
+                patch_resp = await booknpay_client.update_booking_status(
                     booking_id=booking_id,
                     status="cancelled",
                     payment_status=new_payment_status,
@@ -215,9 +216,27 @@ class BookingCancelledHandler:
 
         # ── 4. Credit note in ushanr for ALL cancellations (non-blocking) ─────
         if booking_id:
+            canc_fee = data.get("cancellation_fee")
+            refund_amt = data.get("refund_amount") or data.get("refundable_amount")
+            refund_method = data.get("refund_method")
+            refund_number = data.get("refund_number")
+            branch_id_val = data.get("branch_id")
+            processed_by = data.get("change_by_user") or data.get("cancelled_by")
+
+            # Fallback: if refund_number wasn't in event payload, check response from booknpay update
+            if not refund_number and isinstance(patch_resp, dict):
+                p_data = patch_resp.get("data") or patch_resp
+                refund_number = p_data.get("refund_number")
+
             await trigger_credit_note(
                 source_document_type="booking",
                 source_document_id=booking_id,
                 notes=f"Cancellation — Booking {booking_number}" if booking_number else None,
                 correlation_id=correlation_id,
+                cancellation_fee=canc_fee,
+                refund_amount=refund_amt,
+                refund_method=refund_method,
+                refund_number=refund_number,
+                branch_id=str(branch_id_val) if branch_id_val else None,
+                processed_by=str(processed_by) if processed_by else None,
             )

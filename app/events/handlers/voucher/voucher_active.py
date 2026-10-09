@@ -565,6 +565,13 @@ class VoucherActiveHandler:
                 if v is not None and k not in built_payment_data:
                     built_payment_data[k] = v
 
+            voucher_number: str = str(
+                data.get("voucher_number")
+                or vctx.get("voucher_number")
+                or (data.get("voucher_data") or {}).get("voucher_number")
+                or ""
+            )
+
             payload: dict[str, Any] = {
                 # ── Required fields ────────────────────────────────────────
                 "customer_id": sender_id or None,
@@ -573,6 +580,7 @@ class VoucherActiveHandler:
                 "currency": vctx["currency"],
                 # ── Associations ───────────────────────────────────────────
                 "voucher_id": voucher_id,
+                "voucher_number": voucher_number or None,
                 "booking_id": None,
                 # ── Status & classification ────────────────────────────────
                 "status": "success",
@@ -653,6 +661,7 @@ class VoucherActiveHandler:
                 # ── Voucher data snapshot ──────────────────────────────────
                 "voucher_data": {
                     "voucher_id": voucher_id,
+                    "voucher_number": voucher_number,
                     "service_id": service_id or "",
                     "service_name": vctx["service_name"],
                     "branch_id": branch_id or "",
@@ -677,6 +686,7 @@ class VoucherActiveHandler:
             logger.info(
                 "voucher_active_payment_record_created",
                 voucher_id=voucher_id,
+                voucher_number=voucher_number,
                 payment_id=payment_id,
                 total_amount=vctx["total_amount"],
                 addons_price=addons_price,
