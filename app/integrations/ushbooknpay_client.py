@@ -190,6 +190,10 @@ class UshBookNPayClient:
             resolved_creator_data: dict[str, Any] = dict(_c_user_data)
             if resolved_creator and not resolved_creator_data.get("id"):
                 resolved_creator_data["id"] = resolved_creator
+            if not resolved_creator_data.get("user_type"):
+                resolved_creator_data["user_type"] = resolved_creator_data.get("role") or ("customer" if (resolved_creator == customer_id or not resolved_creator) else "user")
+            if not resolved_creator_data.get("role"):
+                resolved_creator_data["role"] = resolved_creator_data.get("user_type") or ("customer" if (resolved_creator == customer_id or not resolved_creator) else "user")
         else:
             _c_snapshot = customer_data or {}
             resolved_creator_data = {
@@ -197,6 +201,7 @@ class UshBookNPayClient:
                 "name": _c_snapshot.get("name") or meta.get("customer_name") or "",
                 "phone": _c_snapshot.get("phone") or _c_snapshot.get("mobile") or meta.get("customer_mobile") or meta.get("customer_phone") or "",
                 "email": _c_snapshot.get("email") or meta.get("customer_email") or "",
+                "user_type": "customer" if (resolved_creator == customer_id or not resolved_creator) else "user",
                 "role": "customer" if (resolved_creator == customer_id or not resolved_creator) else "user",
             }
 
@@ -392,11 +397,16 @@ class UshBookNPayClient:
             resolved_creator_data: dict[str, Any] = dict(created_by_user_data)
             if resolved_creator and not resolved_creator_data.get("id"):
                 resolved_creator_data["id"] = resolved_creator
+            if not resolved_creator_data.get("user_type"):
+                resolved_creator_data["user_type"] = resolved_creator_data.get("role") or ("customer" if (resolved_creator == customer_id or not resolved_creator) else "user")
+            if not resolved_creator_data.get("role"):
+                resolved_creator_data["role"] = resolved_creator_data.get("user_type") or ("customer" if (resolved_creator == customer_id or not resolved_creator) else "user")
         else:
             resolved_creator_data = {
                 "id": resolved_creator or customer_id,
                 "name": built_customer_data.get("name", ""),
                 "phone": built_customer_data.get("phone", ""),
+                "user_type": "customer" if (resolved_creator == customer_id or not resolved_creator) else "user",
                 "role": "customer" if (resolved_creator == customer_id or not resolved_creator) else "user",
             }
 

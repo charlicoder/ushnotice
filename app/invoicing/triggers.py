@@ -30,6 +30,7 @@ from app.invoicing.invoice_helper import (
     build_shop_order_invoice_lines,
     build_voucher_invoice_lines,
 )
+from app.core.timezone import local_today
 
 logger = get_logger(__name__)
 
@@ -134,11 +135,11 @@ async def trigger_booking_invoice(
     # Invoice date is always the date the invoice record is created
     try:
         if appointment_date:
-            inv_date_str = date.today().isoformat()  # invoice date = creation date
+            inv_date_str = local_today().isoformat()  # invoice date = creation date
         else:
-            inv_date_str = date.today().isoformat()
+            inv_date_str = local_today().isoformat()
     except Exception:
-        inv_date_str = date.today().isoformat()
+        inv_date_str = local_today().isoformat()
 
     lines = build_booking_invoice_lines(data)
     if not lines:
@@ -247,7 +248,7 @@ async def trigger_shop_order_invoice(
             company_id=company_id,
             partner_id=partner_id,
             journal_id=journal_id,
-            invoice_date=date.today().isoformat(),
+            invoice_date=local_today().isoformat(),
             source_document_type="shop_order",
             source_document_id=order_id,
             source_document_ref=order_number,
@@ -319,7 +320,7 @@ async def trigger_gift_purchase_invoice(
             company_id=company_id,
             partner_id=partner_id,
             journal_id=journal_id,
-            invoice_date=date.today().isoformat(),
+            invoice_date=local_today().isoformat(),
             source_document_type="gift_voucher_purchase",
             source_document_id=purchase_id,
             source_document_ref=public_token,
@@ -395,7 +396,7 @@ async def trigger_voucher_invoice(
             company_id=company_id,
             partner_id=partner_id,
             journal_id=journal_id,
-            invoice_date=date.today().isoformat(),
+            invoice_date=local_today().isoformat(),
             source_document_type="gift_voucher",
             source_document_id=voucher_id,
             source_document_ref=voucher_number,
@@ -461,7 +462,7 @@ async def trigger_credit_note(
             source_document_type=source_document_type,
             source_document_id=source_document_id,
             notes=notes,
-            cancellation_date=date.today(),
+            cancellation_date=local_today(),
             cancellation_fee=cancellation_fee,
             refund_amount=refund_amount,
             refund_method=refund_method,

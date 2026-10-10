@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.common.masking import mask_email, mask_phone
+from app.core.timezone import LocalDateTime
 
 
 class AttemptSchema(BaseModel):
@@ -22,8 +23,8 @@ class AttemptSchema(BaseModel):
     provider: str
     attempt_number: int
     status: str
-    started_at: datetime
-    completed_at: datetime | None = None
+    started_at: LocalDateTime
+    completed_at: LocalDateTime | None = None
     provider_message_id: str | None = None
     error_code: str | None = None
     error_message: str | None = None
@@ -40,7 +41,7 @@ class StatusHistorySchema(BaseModel):
     from_status: str | None = None
     to_status: str
     reason: str | None = None
-    created_at: datetime
+    created_at: LocalDateTime
 
 
 class NotificationResponse(BaseModel):
@@ -60,8 +61,8 @@ class NotificationResponse(BaseModel):
     status: str
     provider: str | None = None
     retry_count: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: LocalDateTime
+    updated_at: LocalDateTime
     correlation_id: str | None = None
 
     @classmethod
@@ -115,8 +116,8 @@ class EventResponse(BaseModel):
     correlation_id: str | None = None
     causation_id: str | None = None
     payload: dict[str, Any] | None = None
-    received_at: datetime
-    processed_at: datetime | None = None
+    received_at: LocalDateTime
+    processed_at: LocalDateTime | None = None
     status: str
     error: str | None = None
     retry_count: int
@@ -130,7 +131,7 @@ class DeliveryFailureResponse(BaseModel):
     recipient: str
     provider: str | None = None
     retry_count: int
-    created_at: datetime
+    created_at: LocalDateTime
     last_error_code: str | None = None
     last_error_message: str | None = None
 

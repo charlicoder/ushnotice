@@ -22,6 +22,7 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.timezone import local_today
 
 logger = get_logger(__name__)
 
@@ -40,7 +41,7 @@ def _d(value: Any, default: Decimal = _ZERO) -> Decimal:
 
 
 def _today_str() -> str:
-    return date.today().isoformat()
+    return local_today().isoformat()
 
 
 def _parse_date(value: Any) -> str:

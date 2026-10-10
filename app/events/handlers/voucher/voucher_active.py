@@ -543,12 +543,17 @@ class VoucherActiveHandler:
                 created_by_user_data: dict[str, Any] = dict(raw_creator_data)
                 if created_by_user and not created_by_user_data.get("id"):
                     created_by_user_data["id"] = created_by_user
+                if not created_by_user_data.get("user_type"):
+                    created_by_user_data["user_type"] = created_by_user_data.get("role") or ("customer" if (created_by_user == sender_id or not created_by_user) else "user")
+                if not created_by_user_data.get("role"):
+                    created_by_user_data["role"] = created_by_user_data.get("user_type") or ("customer" if (created_by_user == sender_id or not created_by_user) else "user")
             else:
                 created_by_user_data = {
                     "id": created_by_user or sender_id or "",
                     "name": sender_details.get("name") or "",
                     "phone": sender_details.get("phone_number") or sender_details.get("mobile") or "",
                     "email": sender_details.get("email") or "",
+                    "user_type": "customer" if (created_by_user == sender_id or not created_by_user) else "user",
                     "role": "customer" if (created_by_user == sender_id or not created_by_user) else "user",
                 }
 
