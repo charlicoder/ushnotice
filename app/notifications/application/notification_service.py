@@ -86,6 +86,25 @@ class NotificationService:
         record — and SQS redelivers the event. A DB-based check would then miss
         the earlier send and the recipient would receive the same SMS repeatedly.
         """
+        if req.recipient.channel == NotificationChannel.EMAIL:
+            settings = get_settings()
+            if settings.SKIP_SENDING_EMIAL or settings.SKIP_SENDING_EMAIL or not settings.EMAIL_ENABLED:
+                logger.info(
+                    "email_notification_skipped",
+                    template=req.template_name,
+                    channel=req.recipient.channel.value,
+                    recipient=req.recipient.masked_address,
+                    event_id=req.event_id,
+                    reason="SKIP_SENDING_EMIAL is True",
+                )
+                return Notification(
+                    event_id=req.event_id,
+                    channel=req.recipient.channel.value,
+                    recipient=req.recipient.address,
+                    template_name=req.template_name,
+                    status=NotificationStatus.CANCELLED.value,
+                )
+
         key = self._dedup_key(req)
         claimed = await self._claim(key)
         if claimed is False:
@@ -139,7 +158,7 @@ class NotificationService:
         elif channel == NotificationChannel.WHATSAPP:
             provider_name = settings.WHATSAPP_PROVIDER
         elif channel == NotificationChannel.EMAIL:
-            provider_name = settings.EMAIL_PROVIDER if settings.EMAIL_ENABLED else "stub"
+            provider_name = settings.EMAIL_PROVIDER if (settings.EMAIL_ENABLED and not (settings.SKIP_SENDING_EMIAL or settings.SKIP_SENDING_EMAIL)) else "stub"
         else:
             provider_name = "unknown"
 

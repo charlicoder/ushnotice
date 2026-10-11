@@ -98,6 +98,20 @@ def _sms_message(
     )
 
 
+def _sms_message_ar(
+    order_number: str,
+    total_amount: str,
+    currency: str,
+    tracking_url: str,
+    tracking_code: str,
+) -> str:
+    """Compact SMS version in Arabic."""
+    return (
+        f"USHSPA: تم تأكيد طلبك {order_number} بقيمة {total_amount} {currency}. "
+        f"تتبع: {tracking_url} | رمز الاستلام: {tracking_code}"
+    )
+
+
 class ShopOrderCreatedHandler:
     """
     Processes ``shop.order_created`` events.
@@ -372,7 +386,14 @@ class ShopOrderCreatedHandler:
             tracking_url=tracking_url,
             tracking_code=tracking_code,
         )
-        sms_body = _sms_message(
+        en_sms = _sms_message(
+            order_number=order_number,
+            total_amount=total_amount,
+            currency=currency,
+            tracking_url=tracking_url,
+            tracking_code=tracking_code,
+        )
+        ar_sms = _sms_message_ar(
             order_number=order_number,
             total_amount=total_amount,
             currency=currency,
@@ -389,7 +410,7 @@ class ShopOrderCreatedHandler:
             "currency": currency,
             "tracking_url": tracking_url,
             "tracking_code": tracking_code,
-            "message_body": en_body,
+            "message_body": ar_body,
             "message_body_ar": ar_body,
         }
 
@@ -399,6 +420,8 @@ class ShopOrderCreatedHandler:
         # ── 2. WhatsApp (preferred) ───────────────────────────────────────────
         wa_recipient = ChannelResolver.resolve_whatsapp_recipient(data)
         if wa_recipient:
+            is_en = str(wa_recipient.language).strip().lower().startswith("en")
+            wa_body = en_body if is_en else ar_body
             req_wa = NotificationRequest(
                 event_id=correlation_id,
                 recipient=wa_recipient,
@@ -406,7 +429,7 @@ class ShopOrderCreatedHandler:
                 template_context={
                     **base_context,
                     "customer_name": wa_recipient.name or customer_name,
-                    "message_body": en_body,
+                    "message_body": wa_body,
                 },
                 customer_id=customer_id or None,
                 correlation_id=correlation_id,
@@ -445,6 +468,8 @@ class ShopOrderCreatedHandler:
         if not whatsapp_sent:
             sms_recipient = ChannelResolver.resolve_sms_recipient(data)
             if sms_recipient:
+                is_en = str(sms_recipient.language).strip().lower().startswith("en")
+                sms_body = en_sms if is_en else ar_sms
                 req_sms = NotificationRequest(
                     event_id=correlation_id,
                     recipient=sms_recipient,

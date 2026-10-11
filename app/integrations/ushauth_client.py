@@ -236,14 +236,36 @@ class UshAuthClient:
 
         Calls POST /api/v1/update-appointment-cache-by-booking-id/
         """
+        _STATUS_NORM = {
+            "draft": "confirmed",
+            "payment_pending": "confirmed",
+            "requested": "pending",
+            "reschedule_requested": "pending",
+            "reschedule_approved": "confirmed",
+            "payment_failed": "cancelled",
+            "no_show": "completed",
+        }
+        _PAYMENT_STATUS_NORM = {
+            "not_initiated": "unpaid",
+            "initiated": "pending",
+            "payment_pending": "pending",
+            "paid": "success",
+        }
+        norm_status = _STATUS_NORM.get(str(status).lower().strip(), status) if status else status
+        norm_payment_status = (
+            _PAYMENT_STATUS_NORM.get(str(payment_status).lower().strip(), payment_status)
+            if payment_status
+            else ("pending" if str(status).lower().strip() in ("payment_pending", "draft") else payment_status)
+        )
+
         payload: dict[str, Any] = {
             "booking_id": booking_id,
             "appointment_date": appointment_date,
             "appointment_time": appointment_time,
             "duration": duration,
             "therapist_id": therapist_id,
-            "status": status,
-            "payment_status": payment_status,
+            "status": norm_status,
+            "payment_status": norm_payment_status,
         }
         if branch_id:
             payload["branch_id"] = branch_id

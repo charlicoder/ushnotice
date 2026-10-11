@@ -1,1 +1,6 @@
-{{ message_body }}
+{% if message_body and not ('Gift Redeemed' in message_body) %}{{ message_body }}{% else %}🎁 *تم استخدام الهدية* — USHSPA
+
+عزيزي {{ sender_name | default('العميل العزيز') }}،
+قام *{{ recipient_name | default('المستلم') }}* باستخدام هديتك في USHSPA! ✨
+
+شكراً لاختيارك USHSPA!{% endif %}

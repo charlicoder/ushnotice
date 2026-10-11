@@ -1,1 +1,25 @@
-{{ message_body }}
+{% if message_body and not ('Dear ' in message_body or 'exclusive spa gift' in message_body or 'Booking Confirmed' in message_body) %}{{ message_body }}{% else %}🎁 *لقد استلمت هدية!* — USHSPA
+
+عزيزي {{ recipient_name | default('العميل العزيز') }}،
+
+أرسل لك *{{ sender_name if sender_name else (gift_from if gift_from else 'شخص مميز') }}* هدية سبا حصرية! 💆‍♀️✨
+
+🧴 *الخدمة:* {{ service_name }}
+📍 *الفرع:* {{ branch_name }}
+{% if total_amount %}💳 *قيمة الهدية:* {{ total_amount }} {{ currency | default('KWD') }}
+{% endif %}{% if expire_date %}📅 *صالحة حتى:* {{ expire_date }}
+{% endif %}{% if gift_message %}
+💬 *رسالة من {{ sender_name }}:* _{{ gift_message }}_
+{% endif %}
+🔐 *رمزك السري:* {{ secret_code | default('راجع بريدك الإلكتروني') }}
+{% if recipient_password %}
+🔑 *كلمة المرور الخاصة بك:* {{ recipient_password }}
+{% elif is_new_user %}
+✨ *تم إنشاء الحساب:* تم إنشاء حساب جديد لك. حمّل تطبيقنا وعيّن كلمة المرور الخاصة بك.
+{% endif %}
+🌐 *عرض بطاقة الهدية:* {{ gift_card_url }}
+
+📱 للاستفادة من الهدية، حمّل تطبيق USHSPA وسجّل الدخول بهذا الرقم:
+{{ app_install_url | default('https://apps.apple.com/kw/app/ushspa/id6771279814') }}
+
+— فريق USHSPA{% endif %}

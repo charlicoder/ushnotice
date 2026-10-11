@@ -121,24 +121,32 @@ def _build_redeemed_context(data: dict) -> dict:
         "booking_number": booking_number,
         "sender_name": sender_name,
         "sender_phone": sender_details.get("phone_number") or data.get("sender_phone") or "",
-        "sender_language": str(
-            data.get("sender_language")
-            or sender_details.get("language_preference")
-            or sender_details.get("language")
-            or "en"
-        ).lower(),
+        "sender_language": (
+            "en"
+            if str(
+                data.get("sender_language")
+                or sender_details.get("language_preference")
+                or sender_details.get("language")
+                or ""
+            ).strip().lower().startswith("en")
+            else "ar"
+        ),
         "recipient_name": recipient_name,
         "username": username,
         "recipient_phone": recipient_details.get("phone_number") or data.get("recipient_phone") or "",
         "recipient_email": recipient_details.get("email") or data.get("recipient_email") or "",
-        "recipient_language": str(
-            data.get("recipient_language")
-            or recipient_details.get("language_preference")
-            or recipient_details.get("language")
-            or (booking_data.get("customer_data") or {}).get("language_preference")
-            or (booking_data.get("customer_data") or {}).get("language")
-            or "en"
-        ).lower(),
+        "recipient_language": (
+            "en"
+            if str(
+                data.get("recipient_language")
+                or recipient_details.get("language_preference")
+                or recipient_details.get("language")
+                or (booking_data.get("customer_data") or {}).get("language_preference")
+                or (booking_data.get("customer_data") or {}).get("language")
+                or ""
+            ).strip().lower().startswith("en")
+            else "ar"
+        ),
         "service_name": service_name,
         "branch_name": branch_name,
         "branch_location": branch_location,
@@ -373,16 +381,16 @@ class VoucherRedeemedHandler:
     ) -> None:
         """Send WhatsApp/SMS + Email to a specific person (sender or recipient)."""
         tpl_prefix = f"voucher/redeemed_{audience}"
-        party_lang = vctx.get(f"{audience}_language") or "en"
+        party_lang = "en" if str(vctx.get(f"{audience}_language") or "").strip().lower().startswith("en") else "ar"
         whatsapp_sent = False
 
         # WhatsApp
         if phone:
             try:
-                if party_lang == "ar":
-                    wa_body = _redeemed_whatsapp_message_ar(vctx, name, audience)
-                else:
+                if party_lang == "en":
                     wa_body = _redeemed_whatsapp_message(vctx, name, audience)
+                else:
+                    wa_body = _redeemed_whatsapp_message_ar(vctx, name, audience)
                 wa_payload = {
                     "phone_number": phone,
                     "customer_name": name,
@@ -419,10 +427,10 @@ class VoucherRedeemedHandler:
             # SMS fallback (only sent if WhatsApp was NOT sent)
             if not whatsapp_sent:
                 try:
-                    if party_lang == "ar":
-                        sms_body = _redeemed_sms_message_ar(vctx, audience)
-                    else:
+                    if party_lang == "en":
                         sms_body = _redeemed_sms_message(vctx, audience)
+                    else:
+                        sms_body = _redeemed_sms_message_ar(vctx, audience)
                     sms_payload = {
                         "phone_number": phone,
                         "customer_name": name,

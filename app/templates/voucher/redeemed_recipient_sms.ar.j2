@@ -1,1 +1,2 @@
-{{ message_body }}
+{% if message_body and not ('Hi ' in message_body or 'Your gift booking' in message_body) %}{{ message_body }}{% else %}USHSPA:
+مرحباً {{ recipient_name | default('عميلنا') }}، تم تأكيد حجز قسيمة هديتك رقم {{ voucher_number }} في {{ branch_name }} بتاريخ {{ appointment_date }} الساعة {{ appointment_time }}. نتشرف بزيارتكم!{% endif %}

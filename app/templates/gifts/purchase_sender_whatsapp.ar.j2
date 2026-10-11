@@ -1,1 +1,13 @@
-{{ message_body }}
+{% if message_body and not ('Gift Sent' in message_body or 'Dear ' in message_body) %}{{ message_body }}{% else %}🎁 *تم إرسال الهدية بنجاح!* — USHSPA
+
+عزيزي {{ sender_name | default('العميل العزيز') }}،
+
+تم إرسال هديتك بنجاح إلى *{{ recipient_name }}*! ✨
+
+🧴 *الخدمة:* {{ service_name }}
+📍 *الفرع:* {{ branch_name }}
+{% if total_amount %}💳 *المبلغ:* {{ total_amount }} {{ currency | default('KWD') }}
+{% endif %}🌐 *عرض بطاقة الهدية:* {{ gift_card_url }}
+
+شكراً لاختيارك USHSPA!
+— فريق USHSPA{% endif %}

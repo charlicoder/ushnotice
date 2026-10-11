@@ -1,4 +1,4 @@
-✅ *تم تأكيد الحجز* — USHSPA
+{% if message_body and not ('Booking Confirmed' in message_body or 'Dear ' in message_body) %}{{ message_body }}{% else %}✅ *تم تأكيد الحجز* — USHSPA
 
 عزيزي {{ customer_name | default('العميل العزيز') }}،
 
@@ -6,7 +6,7 @@
 
 📅 *التاريخ:* {{ appointment_date }}
 🕐 *الوقت:* {{ appointment_time }}{% if appointment_end_time %}–{{ appointment_end_time }}{% endif %}
-{% if therapist_name %}💆 *المعالج:* {{ therapist_name }}{% endif %}
+{% if therapist_name %}💆 *المعالج/ة:* {{ therapist_name }}{% endif %}
 {% if service_name %}🧴 *الخدمة:* {{ service_name }}{% endif %}
 {% if branch_name %}📍 *الفرع:* {{ branch_name }}{% endif %}
 {% if total_amount %}💳 *المبلغ المدفوع:* {{ total_amount }} {{ currency | default('KWD') }}{% endif %}
@@ -15,4 +15,4 @@
 نتطلع للترحيب بك! يرجى الحضور قبل الموعد بـ 5 دقائق.
 
 للمساعدة، يرجى التواصل معنا في أي وقت.
-— فريق USHSPA
+— فريق USHSPA{% endif %}

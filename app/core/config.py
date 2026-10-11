@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # The full tracking link will be: {USH_ORDER_TRACKING_BASE_URL}/{public_token}
     USH_ORDER_TRACKING_BASE_URL: str = ""
 
+    # Public-facing base URL for gift voucher pages sent to customers.
+    # Format: https://ushspa.co/gift  (no trailing slash)
+    # The full gift voucher link will be: {USH_GIFT_VOUCHER_BASE_URL}/{public_token}
+    USH_GIFT_VOUCHER_BASE_URL: str = "https://ushspa.co/gift"
+
     # ── ushanr accounting entity UUIDs ────────────────────────────────────────
     # Set these to the actual UUIDs from your ushanr database.
     # Required for invoice generation to work.
@@ -141,6 +146,19 @@ class Settings(BaseSettings):
 
     # ── Email Provider (SMTP / Gmail) ─────────────────────────────────────────
     EMAIL_ENABLED: bool = True
+    SKIP_SENDING_EMIAL: bool = Field(
+        default=False,
+        description="Skip sending email notifications across all events if True.",
+    )
+    SKIP_SENDING_EMAIL: bool = Field(
+        default=False,
+        description="Alias for SKIP_SENDING_EMIAL to support standard spelling.",
+    )
+
+    @property
+    def skip_sending_email(self) -> bool:
+        """Return True if email sending should be skipped across all events."""
+        return bool(self.SKIP_SENDING_EMIAL or self.SKIP_SENDING_EMAIL or not self.EMAIL_ENABLED)
 
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
@@ -163,7 +181,7 @@ class Settings(BaseSettings):
     EMAIL_PROVIDER: Literal["smtp", "gmail", "stub"] = "smtp"
 
     # ── Notification behaviour ────────────────────────────────────────────────
-    DEFAULT_LANGUAGE: Literal["en", "ar"] = "en"
+    DEFAULT_LANGUAGE: Literal["en", "ar"] = "ar"
     NOTIFICATION_MAX_RETRIES: int = 3
     NOTIFICATION_RETRY_BASE_DELAY: float = 2.0  # seconds (exponential base)
     NOTIFICATION_RETRY_MAX_DELAY: float = 60.0

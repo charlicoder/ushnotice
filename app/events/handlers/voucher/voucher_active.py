@@ -17,6 +17,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
@@ -29,11 +30,22 @@ from app.notifications.domain.value_objects import NotificationRequest, Recipien
 
 logger = get_logger(__name__)
 
-# Public gift-card page URL template — {public_token} will be filled at runtime.
+# Public gift-card page URL template fallback — {public_token} will be filled at runtime.
 _GIFT_CARD_PAGE_URL = "https://ushspa.co/gift/{public_token}"
 # App Store link and website shown to recipients who may not be customers yet.
 _APP_INSTALL_URL = "https://apps.apple.com/kw/app/ushspa/id6771279814"
 _WEBSITE_URL = "https://ushspa.co/"
+
+
+def _build_gift_voucher_url(public_token: str) -> str:
+    """Build the public gift-card URL using USH_GIFT_VOUCHER_BASE_URL."""
+    if not public_token:
+        return _APP_INSTALL_URL
+    settings = get_settings()
+    base_url = (getattr(settings, "USH_GIFT_VOUCHER_BASE_URL", "") or "").rstrip("/")
+    if base_url:
+        return f"{base_url}/{public_token}"
+    return _GIFT_CARD_PAGE_URL.format(public_token=public_token)
 
 
 # ── Context helpers ────────────────────────────────────────────────────────────
@@ -59,7 +71,7 @@ def _build_voucher_context(data: dict) -> dict:
     expire_fmt = _fmt_expire(expire_raw) if expire_raw else ""
 
     public_token = data.get("public_token") or ""
-    gift_card_url = _GIFT_CARD_PAGE_URL.format(public_token=public_token) if public_token else _APP_INSTALL_URL
+    gift_card_url = _build_gift_voucher_url(public_token)
 
     gift_from = (data.get("gift_from") or sender_details.get("gift_from") or "").strip()
     sender_name = sender_details.get("name") or data.get("sender_name") or "A generous friend"
@@ -67,18 +79,26 @@ def _build_voucher_context(data: dict) -> dict:
     service_name = service_data.get("name") or data.get("service_name") or "Spa Experience"
     branch_name = branch_data.get("name") or data.get("branch_name") or "USHSPA"
 
-    sender_language = str(
-        data.get("sender_language")
-        or sender_details.get("language_preference")
-        or sender_details.get("language")
-        or "en"
-    ).lower()
-    recipient_language = str(
-        data.get("recipient_language")
-        or recipient_details.get("language_preference")
-        or recipient_details.get("language")
-        or "en"
-    ).lower()
+    sender_language = (
+        "en"
+        if str(
+            data.get("sender_language")
+            or sender_details.get("language_preference")
+            or sender_details.get("language")
+            or ""
+        ).strip().lower().startswith("en")
+        else "ar"
+    )
+    recipient_language = (
+        "en"
+        if str(
+            data.get("recipient_language")
+            or recipient_details.get("language_preference")
+            or recipient_details.get("language")
+            or ""
+        ).strip().lower().startswith("en")
+        else "ar"
+    )
 
     is_new_user = bool(
         recipient_details.get("is_new_user")
@@ -719,15 +739,15 @@ class VoucherActiveHandler:
         correlation_id: str | None,
     ) -> None:
         """Send WhatsApp/SMS + Email to the gift sender."""
-        sender_lang = vctx.get("sender_language") or "en"
+        sender_lang = "en" if str(vctx.get("sender_language") or "").strip().lower().startswith("en") else "ar"
         whatsapp_sent = False
 
         # WhatsApp
         try:
-            if sender_lang == "ar":
-                wa_body = _sender_whatsapp_message_ar(vctx)
-            else:
+            if sender_lang == "en":
                 wa_body = _sender_whatsapp_message(vctx)
+            else:
+                wa_body = _sender_whatsapp_message_ar(vctx)
             sender_payload = {
                 "phone_number": sender_phone,
                 "customer_name": sender_name,
@@ -764,10 +784,10 @@ class VoucherActiveHandler:
         # SMS fallback (only sent if WhatsApp was NOT sent)
         if not whatsapp_sent:
             try:
-                if sender_lang == "ar":
-                    sms_body = _sender_sms_message_ar(vctx)
-                else:
+                if sender_lang == "en":
                     sms_body = _sender_sms_message(vctx)
+                else:
+                    sms_body = _sender_sms_message_ar(vctx)
                 sender_payload_sms = {
                     "phone_number": sender_phone,
                     "customer_name": sender_name,
@@ -839,16 +859,16 @@ class VoucherActiveHandler:
         correlation_id: str | None,
     ) -> None:
         """Send WhatsApp/SMS + Email to the gift recipient with secret_code and link."""
-        recipient_lang = vctx.get("recipient_language") or "en"
+        recipient_lang = "en" if str(vctx.get("recipient_language") or "").strip().lower().startswith("en") else "ar"
         whatsapp_sent = False
 
         # WhatsApp
         if recipient_phone:
             try:
-                if recipient_lang == "ar":
-                    wa_body = _recipient_whatsapp_message_ar(vctx)
-                else:
+                if recipient_lang == "en":
                     wa_body = _recipient_whatsapp_message(vctx)
+                else:
+                    wa_body = _recipient_whatsapp_message_ar(vctx)
                 recipient_payload = {
                     "phone_number": recipient_phone,
                     "customer_name": recipient_name,
@@ -885,10 +905,10 @@ class VoucherActiveHandler:
             # SMS fallback (only sent if WhatsApp was NOT sent)
             if not whatsapp_sent:
                 try:
-                    if recipient_lang == "ar":
-                        sms_body = _recipient_sms_message_ar(vctx)
-                    else:
+                    if recipient_lang == "en":
                         sms_body = _recipient_sms_message(vctx)
+                    else:
+                        sms_body = _recipient_sms_message_ar(vctx)
                     recipient_payload_sms = {
                         "phone_number": recipient_phone,
                         "customer_name": recipient_name,

@@ -1,1 +1,2 @@
-{{ message_body }}
+{% if message_body and not ('Hi ' in message_body or 'has redeemed' in message_body) %}{{ message_body }}{% else %}USHSPA:
+مرحباً {{ sender_name | default('عميلنا') }}، تم استخدام هديتك المقدمة إلى {{ recipient_name }} وحجز الموعد بنجاح! شكراً لك.{% endif %}

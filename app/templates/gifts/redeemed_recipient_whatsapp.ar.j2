@@ -1,1 +1,4 @@
-{{ message_body }}
+{% if message_body and not ('Your USHSPA gift has been successfully redeemed' in message_body) %}{{ message_body }}{% else %}🎁 *تم استخدام هديتك بنجاح!* — USHSPA
+
+تم استخدام هديتك في USHSPA بنجاح!
+نتمنى لك تجربة ممتعة ومميزة، شكراً لك! ✨{% endif %}

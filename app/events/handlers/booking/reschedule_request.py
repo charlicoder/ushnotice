@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import time
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
@@ -69,69 +70,8 @@ class RescheduleRequestHandler:
             "appointment_time": data.get("appointment_time") or data.get("time") or "",
         }
 
-        # 2. Notify Branch Manager via WhatsApp / Email
-        if branch_manager_phone:
-            branch_wa_recipient = Recipient(
-                channel=NotificationChannel.WHATSAPP,
-                address=str(branch_manager_phone),
-                name=f"{branch_name} Manager",
-                language="en",
-            )
-            req_branch_wa = NotificationRequest(
-                event_id=envelope.event_id_str,
-                recipient=branch_wa_recipient,
-                template_name="booking/reschedule_branch",
-                template_context=context,
-                booking_id=booking_id or None,
-                correlation_id=correlation_id,
-            )
-            await service.send(req_branch_wa)
-
-        if branch_manager_email:
-            branch_email_recipient = Recipient(
-                channel=NotificationChannel.EMAIL,
-                address=str(branch_manager_email),
-                name=f"{branch_name} Manager",
-                language="en",
-            )
-            req_branch_email = NotificationRequest(
-                event_id=envelope.event_id_str,
-                recipient=branch_email_recipient,
-                template_name="booking/reschedule_branch",
-                template_context=context,
-                subject=f"Reschedule Requested - {context['booking_reference']}",
-                booking_id=booking_id or None,
-                correlation_id=correlation_id,
-            )
-            await service.send(req_branch_email)
-
-        # 3. Notify Customer via SMS and/or Email
-        customer_sms_recipient = ChannelResolver.resolve_sms_recipient(data)
-        if customer_sms_recipient:
-            req_customer_sms = NotificationRequest(
-                event_id=envelope.event_id_str,
-                recipient=customer_sms_recipient,
-                template_name="booking/reschedule_customer",
-                template_context={**context, "customer_name": customer_sms_recipient.name},
-                customer_id=customer_id or None,
-                booking_id=booking_id or None,
-                correlation_id=correlation_id,
-            )
-            await service.send(req_customer_sms)
-
-        customer_email_recipient = ChannelResolver.resolve_email_recipient(data)
-        if customer_email_recipient:
-            req_customer_email = NotificationRequest(
-                event_id=envelope.event_id_str,
-                recipient=customer_email_recipient,
-                template_name="booking/reschedule_customer",
-                template_context={**context, "customer_name": customer_email_recipient.name},
-                subject=f"Reschedule Request Received – {context['booking_reference']}",
-                customer_id=customer_id or None,
-                booking_id=booking_id or None,
-                correlation_id=correlation_id,
-            )
-            await service.send(req_customer_email)
+        # 2/3. Notifications (SMS / WhatsApp / Email) to branch manager and customer
+        # are intentionally disabled for booking.reschedule_requested events.
 
         # 4. Call ushbooknpay to update booking status
         if booking_id:

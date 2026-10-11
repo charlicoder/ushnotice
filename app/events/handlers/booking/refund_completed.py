@@ -53,41 +53,8 @@ class RefundCompletedHandler:
         processed_by = str(data.get("processed_by") or "")
         correlation_id = envelope.correlation_id_str
 
-        # ── 1. Send SMS notification ──────────────────────────────────────────
-        sms_recipient = ChannelResolver.resolve_sms_recipient(data)
-        if sms_recipient:
-            req_sms = NotificationRequest(
-                event_id=envelope.event_id_str,
-                recipient=sms_recipient,
-                template_name="booking/payment_failed",
-                template_context={**context, "customer_name": sms_recipient.name},
-                customer_id=customer_id or None,
-                booking_id=booking_id or None,
-                correlation_id=correlation_id,
-            )
-            try:
-                await service.send(req_sms)
-            except Exception as exc:
-                logger.warning("refund_sms_notification_failed", error=str(exc))
-
-        # ── 2. Send Email notification ────────────────────────────────────────
-        email_recipient = ChannelResolver.resolve_email_recipient(data)
-        if email_recipient:
-            subject = f"Refund Confirmation – {refund_number or booking_ref}"
-            req_email = NotificationRequest(
-                event_id=envelope.event_id_str,
-                recipient=email_recipient,
-                template_name="booking/payment_failed",
-                template_context={**context, "customer_name": email_recipient.name},
-                subject=subject,
-                customer_id=customer_id or None,
-                booking_id=booking_id or None,
-                correlation_id=correlation_id,
-            )
-            try:
-                await service.send(req_email)
-            except Exception as exc:
-                logger.warning("refund_email_notification_failed", error=str(exc))
+        # ── 1. Notifications (SMS / WhatsApp / Email) intentionally disabled ──
+        # No customer notification is sent for booking.refund_completed events.
 
         # ── 3. Common Accounting: Credit Note & Outbound Payment in ushanr ────
         if booking_id:

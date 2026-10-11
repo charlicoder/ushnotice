@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
@@ -16,9 +17,21 @@ from app.notifications.domain.value_objects import NotificationRequest
 
 logger = get_logger(__name__)
 
+# Public gift-card page URL template fallback — {public_token} will be filled at runtime.
 _GIFT_CARD_PAGE_URL = "https://ushspa.co/gift/{public_token}"
 _APP_INSTALL_URL = "https://apps.apple.com/kw/app/ushspa/id6771279814"
 _WEBSITE_URL = "https://ushspa.co/"
+
+
+def _build_gift_voucher_url(public_token: str) -> str:
+    """Build the public gift-card URL using USH_GIFT_VOUCHER_BASE_URL."""
+    if not public_token:
+        return _APP_INSTALL_URL
+    settings = get_settings()
+    base_url = (getattr(settings, "USH_GIFT_VOUCHER_BASE_URL", "") or "").rstrip("/")
+    if base_url:
+        return f"{base_url}/{public_token}"
+    return _GIFT_CARD_PAGE_URL.format(public_token=public_token)
 
 
 def _fmt_expire(expire_date: str) -> str:
@@ -39,7 +52,7 @@ def _build_gift_context(data: dict) -> dict:
     expire_fmt = _fmt_expire(expire_raw) if expire_raw else ""
 
     public_token = data.get("public_token") or ""
-    gift_card_url = _GIFT_CARD_PAGE_URL.format(public_token=public_token) if public_token else _APP_INSTALL_URL
+    gift_card_url = _build_gift_voucher_url(public_token)
 
     sender_name = sender_data.get("name") or data.get("sender_id") or "A generous friend"
     recipient_name = recipient_data.get("name") or "Valued Customer"
@@ -68,12 +81,20 @@ def _build_gift_context(data: dict) -> dict:
         "sender_name": sender_name,
         "sender_phone": sender_data.get("phone_number") or "",
         "sender_email": sender_data.get("email") or "",
-        "sender_language": str(data.get("sender_language") or sender_data.get("language_preference") or sender_data.get("language") or "en").lower(),
+        "sender_language": (
+            "en"
+            if str(data.get("sender_language") or sender_data.get("language_preference") or sender_data.get("language") or "").strip().lower().startswith("en")
+            else "ar"
+        ),
         "recipient_name": recipient_name,
         "recipient_phone": data.get("recipient_phone") or recipient_data.get("phone_number") or "",
         "recipient_email": recipient_data.get("email") or "",
         "recipient_password": str(recipient_data.get("password") or data.get("recipient_password") or ""),
-        "recipient_language": str(data.get("recipient_language") or recipient_data.get("language_preference") or recipient_data.get("language") or "en").lower(),
+        "recipient_language": (
+            "en"
+            if str(data.get("recipient_language") or recipient_data.get("language_preference") or recipient_data.get("language") or "").strip().lower().startswith("en")
+            else "ar"
+        ),
         "payment_provider": str(data.get("payment_provider") or ""),
         "payment_through": str(data.get("payment_through") or ""),
         "is_new_user": is_new_user,
@@ -223,11 +244,11 @@ class GiftPurchaseCompletedHandler:
     ) -> None:
         """Send WhatsApp to the gift sender."""
         try:
-            sender_lang = gctx.get("sender_language") or "en"
-            if sender_lang == "ar":
-                wa_body = _sender_whatsapp_message_ar(gctx)
-            else:
+            sender_lang = "en" if str(gctx.get("sender_language") or "").strip().lower().startswith("en") else "ar"
+            if sender_lang == "en":
                 wa_body = _sender_whatsapp_message(gctx)
+            else:
+                wa_body = _sender_whatsapp_message_ar(gctx)
             # Remove secret_code from context for safety before sending
             safe_ctx = {k: v for k, v in gctx.items() if k != "secret_code"}
             sender_payload = {
@@ -264,11 +285,11 @@ class GiftPurchaseCompletedHandler:
     ) -> None:
         """Send WhatsApp to the gift recipient with secret_code and link."""
         try:
-            lang = gctx["recipient_language"]
-            if lang == "ar":
-                wa_body = _recipient_whatsapp_message_ar(gctx)
-            else:
+            lang = "en" if str(gctx.get("recipient_language") or "").strip().lower().startswith("en") else "ar"
+            if lang == "en":
                 wa_body = _recipient_whatsapp_message_en(gctx)
+            else:
+                wa_body = _recipient_whatsapp_message_ar(gctx)
 
             recipient_payload = {
                 "phone_number": recipient_phone,

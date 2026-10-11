@@ -41,9 +41,9 @@ def test_channel_resolver_language_extraction() -> None:
     assert ChannelResolver.extract_language({"recipient": {"language_preference": "ar"}}) == "ar"
 
     # 3. Default fallback
-    assert ChannelResolver.extract_language({}) == "en"
-    assert ChannelResolver.extract_language({}, default_lang="ar") == "ar"
-    assert ChannelResolver.extract_language({"language_preference": "unknown"}) == "en"
+    assert ChannelResolver.extract_language({}) == "ar"
+    assert ChannelResolver.extract_language({}, default_lang="en") == "en"
+    assert ChannelResolver.extract_language({"language_preference": "unknown"}) == "ar"
 
 
 def test_recipient_language_sanitization() -> None:
@@ -60,7 +60,7 @@ def test_recipient_language_sanitization() -> None:
     assert r_en.language == "en"
 
     r_default = Recipient(channel=NotificationChannel.SMS, address="+96512345678", language="other")
-    assert r_default.language == "en"
+    assert r_default.language == "ar"
 
 
 def test_all_sms_and_whatsapp_templates_render_both_languages() -> None:

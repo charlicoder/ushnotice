@@ -1,1 +1,6 @@
-{{ message_body }}
+{% if message_body and not ('Your Gift Has Been Opened' in message_body) %}{{ message_body }}{% else %}🎁 *تم فتح هديتك!* — USHSPA
+
+عزيزي {{ sender_name | default('العميل العزيز') }}،
+قام *{{ recipient_name }}* بفتح هديتك. ✨
+
+شكراً لاختيارك USHSPA!{% endif %}

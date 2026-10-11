@@ -86,10 +86,10 @@ def get_email_provider() -> EmailProvider:
         return _email_provider
 
     settings = get_settings()
-    if not settings.EMAIL_ENABLED:
+    if not settings.EMAIL_ENABLED or settings.SKIP_SENDING_EMIAL or settings.SKIP_SENDING_EMAIL:
         from app.providers.email.stub import StubEmailProvider
         _email_provider = StubEmailProvider()
-        logger.info("Email provider disabled by EMAIL_ENABLED=false; using stub provider")
+        logger.info("Email provider disabled by EMAIL_ENABLED=false or SKIP_SENDING_EMIAL=true; using stub provider")
         return _email_provider
 
     provider_name = settings.EMAIL_PROVIDER.lower()

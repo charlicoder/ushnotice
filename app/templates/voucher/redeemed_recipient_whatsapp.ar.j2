@@ -1,1 +1,14 @@
-{{ message_body }}
+{% if message_body and not ('Dear ' in message_body or 'Booking Confirmed' in message_body) %}{{ message_body }}{% else %}✅ *تم تأكيد حجز الهدية* — USHSPA
+
+عزيزي {{ recipient_name | default('العميل العزيز') }}،
+
+تم تأكيد حجز قسيمة هديتك بنجاح! تفاصيل الموعد:
+
+🧴 *الخدمة:* {{ service_name }}
+📍 *الفرع:* {{ branch_name }}
+📅 *التاريخ:* {{ appointment_date }}
+🕐 *الوقت:* {{ appointment_time }}
+🔖 *رقم القسيمة:* {{ voucher_number }}
+
+نتطلع للترحيب بك! يرجى الحضور قبل الموعد بـ 5 دقائق.
+— فريق USHSPA{% endif %}

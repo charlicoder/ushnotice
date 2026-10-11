@@ -119,41 +119,5 @@ class BookingPaymentPendingHandler:
                     error=str(exc),
                 )
 
-        # ── 2. Send SMS / email payment-pending reminder ─────────────────────
-        service = NotificationService(ctx)
-
-        context = {
-            "booking_reference": data.get("booking_reference") or data.get("reference") or "",
-            "branch_name": data.get("branch_name") or "USHSPA",
-            "appointment_date": data.get("appointment_date") or data.get("date") or "",
-            "appointment_time": data.get("appointment_time") or data.get("time") or "",
-        }
-
-        sms_recipient = ChannelResolver.resolve_sms_recipient(data)
-        if sms_recipient:
-            req_sms = NotificationRequest(
-                event_id=envelope.event_id_str,
-                recipient=sms_recipient,
-                template_name="booking/payment_pending",
-                template_context={**context, "customer_name": sms_recipient.name},
-                customer_id=str(data.get("customer_id") or "") or None,
-                booking_id=str(data.get("booking_id") or "") or None,
-                correlation_id=envelope.correlation_id_str,
-            )
-            await service.send(req_sms)
-
-        email_recipient = ChannelResolver.resolve_email_recipient(data)
-        if email_recipient:
-            ref = context["booking_reference"]
-            subject = f"Payment Reminder – {ref}" if ref else "Complete Your USHSPA Booking Payment"
-            req_email = NotificationRequest(
-                event_id=envelope.event_id_str,
-                recipient=email_recipient,
-                template_name="booking/payment_pending",
-                template_context={**context, "customer_name": email_recipient.name},
-                subject=subject,
-                customer_id=str(data.get("customer_id") or "") or None,
-                booking_id=str(data.get("booking_id") or "") or None,
-                correlation_id=envelope.correlation_id_str,
-            )
-            await service.send(req_email)
+        # ── 2. Notifications (SMS / WhatsApp / Email) intentionally disabled ──
+        # No customer notification is sent for booking.payment_pending events.

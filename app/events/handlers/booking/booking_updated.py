@@ -45,16 +45,58 @@ class BookingUpdatedHandler:
         appointment_time: str = str(data.get("appointment_time") or "")
         duration: int = int(data.get("duration") or 0)
         therapist_id: str = str(data.get("therapist_id") or "")
-        booking_status: str = str(data.get("status") or "")
-        payment_status: str = str(data.get("payment_status") or "")
+        raw_status: str = str(data.get("status") or "").lower().strip()
+        raw_payment_status: str = str(data.get("payment_status") or "").lower().strip()
         branch_id: str | None = data.get("branch_id")
         service_arrangement_id: str | None = data.get("service_arrangement_id")
+
+        _STATUS_MAP = {
+            "draft": "confirmed",
+            "confirmed": "confirmed",
+            "completed": "completed",
+            "cancelled": "cancelled",
+            "payment_pending": "confirmed",
+            "requested": "pending",
+            "reschedule_requested": "pending",
+            "reschedule_approved": "confirmed",
+            "payment_failed": "cancelled",
+            "no_show": "completed",
+            "blocked": "blocked",
+            "approved": "approved",
+            "pending": "pending",
+        }
+        _PAYMENT_STATUS_MAP = {
+            "unpaid": "unpaid",
+            "not_initiated": "unpaid",
+            "pending": "pending",
+            "initiated": "pending",
+            "payment_pending": "pending",
+            "success": "success",
+            "paid": "success",
+            "completed": "success",
+            "refunded": "refunded",
+            "rewarded": "rewarded",
+            "failed": "failed",
+            "cancelled": "cancelled",
+        }
+
+        cache_status: str = _STATUS_MAP.get(raw_status, raw_status or "confirmed")
+        if raw_payment_status:
+            cache_payment_status = _PAYMENT_STATUS_MAP.get(raw_payment_status, raw_payment_status)
+        elif raw_status in ("payment_pending", "draft"):
+            cache_payment_status = "pending"
+        elif raw_status == "confirmed":
+            cache_payment_status = "success"
+        else:
+            cache_payment_status = "unpaid"
 
         logger.info(
             "booking_updated_event_received",
             booking_id=booking_id,
             appointment_date=appointment_date,
             appointment_time=appointment_time,
+            status=cache_status,
+            payment_status=cache_payment_status,
             event_id=correlation_id,
         )
 
@@ -66,8 +108,8 @@ class BookingUpdatedHandler:
                 appointment_time=appointment_time,
                 duration=duration,
                 therapist_id=therapist_id,
-                status=booking_status,
-                payment_status=payment_status,
+                status=cache_status,
+                payment_status=cache_payment_status,
                 branch_id=branch_id,
                 service_arrangement_id=service_arrangement_id,
                 correlation_id=correlation_id,

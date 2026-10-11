@@ -1,1 +1,4 @@
-{{ message_body }}
+{% if message_body and not ('Hi ' in message_body or 'gift voucher' in message_body or 'has been sent' in message_body) %}{{ message_body }}{% else %}USHSPA:
+مرحباً {{ sender_name | default('عميلنا') }}، تم إرسال قسيمة الهدية بنجاح إلى {{ recipient_name }}!
+رقم القسيمة: {{ voucher_number }}
+شكراً لاختيارك USHSPA.{% endif %}

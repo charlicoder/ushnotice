@@ -1,1 +1,12 @@
-{{ message_body }}
+{% if message_body and not ('Dear ' in message_body or 'Gift Redeemed' in message_body) %}{{ message_body }}{% else %}🎉 *تم استخدام هديتك!* — USHSPA
+
+عزيزي {{ sender_name | default('العميل العزيز') }}،
+
+قام *{{ recipient_name }}* باستخدام قسيمة الهدية وحجز موعده في USHSPA! ✨
+
+🧴 *الخدمة:* {{ service_name }}
+📍 *الفرع:* {{ branch_name }}
+📅 *تاريخ الموعد:* {{ appointment_date }}
+
+شكراً لمشاركتك لحظات الاسترخاء مع من تحب!
+— فريق USHSPA{% endif %}

@@ -3,6 +3,7 @@ Handler for `gift.delivered` event.
 """
 from __future__ import annotations
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
@@ -12,7 +13,19 @@ from app.notifications.domain.value_objects import NotificationRequest
 
 logger = get_logger(__name__)
 
+# Public gift-card page URL template fallback — {public_token} will be filled at runtime.
 _GIFT_CARD_PAGE_URL = "https://ushspa.co/gift/{public_token}"
+
+
+def _build_gift_voucher_url(public_token: str) -> str:
+    """Build the public gift-card URL using USH_GIFT_VOUCHER_BASE_URL."""
+    if not public_token:
+        return "https://ushspa.co/"
+    settings = get_settings()
+    base_url = (getattr(settings, "USH_GIFT_VOUCHER_BASE_URL", "") or "").rstrip("/")
+    if base_url:
+        return f"{base_url}/{public_token}"
+    return _GIFT_CARD_PAGE_URL.format(public_token=public_token)
 
 
 class GiftDeliveredHandler:
@@ -31,25 +44,29 @@ class GiftDeliveredHandler:
         
         recipient_name = recipient_data.get("name") or "Valued Customer"
         recipient_phone = data.get("recipient_phone") or recipient_data.get("phone_number") or ""
-        recipient_language = str(
-            data.get("recipient_language")
-            or recipient_data.get("language_preference")
-            or recipient_data.get("language")
-            or "en"
-        ).lower()
+        recipient_language = (
+            "en"
+            if str(
+                data.get("recipient_language")
+                or recipient_data.get("language_preference")
+                or recipient_data.get("language")
+                or ""
+            ).strip().lower().startswith("en")
+            else "ar"
+        )
         public_token = data.get("public_token") or ""
         
-        gift_card_url = _GIFT_CARD_PAGE_URL.format(public_token=public_token) if public_token else "https://ushspa.co/"
+        gift_card_url = _build_gift_voucher_url(public_token)
 
         if not recipient_phone:
             logger.info("gift_delivered_recipient_no_phone", gift_id=gift_id)
             return
 
         try:
-            if recipient_language == "ar":
-                wa_body = f"📦 تم توصيل هديتك المادية من USHSPA! يرجى تأكيد الاستلام: {gift_card_url}"
-            else:
+            if recipient_language == "en":
                 wa_body = f"📦 Your USHSPA Physical Gift has been delivered! Please confirm receipt: {gift_card_url}"
+            else:
+                wa_body = f"📦 تم توصيل هديتك المادية من USHSPA! يرجى تأكيد الاستلام: {gift_card_url}"
 
             recipient_payload = {
                 "phone_number": recipient_phone,

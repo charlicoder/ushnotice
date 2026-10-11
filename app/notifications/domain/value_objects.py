@@ -26,16 +26,17 @@ class Recipient:
     channel: NotificationChannel
     address: str
     name: str = ""
-    language: str = "en"
+    language: str = "ar"
 
     def __post_init__(self) -> None:
         if not self.address:
             raise ValueError("Recipient address must not be empty.")
         clean_lang = str(self.language or "").strip().lower()
-        if clean_lang.startswith("ar"):
-            object.__setattr__(self, "language", "ar")
-        else:
+        # Arabic is the default; English only when explicitly requested.
+        if clean_lang.startswith("en"):
             object.__setattr__(self, "language", "en")
+        else:
+            object.__setattr__(self, "language", "ar")
 
     @property
     def masked_address(self) -> str:

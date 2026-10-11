@@ -282,6 +282,121 @@ def _email_pending_payment_subject(context: dict) -> str:
     )
 
 
+def _whatsapp_message_ar(context: dict, customer_name: str) -> str:
+    """Compose a professional Arabic WhatsApp confirmation message."""
+    name = customer_name or "العميل العزيز"
+    date_str = context["appointment_date"]
+    time_str = context["appointment_time"]
+    end_time_str = context.get("appointment_end_time") or ""
+    time_range = f"{time_str}–{end_time_str}" if end_time_str else time_str
+    amount = context.get("total_amount") or ""
+    currency = context.get("currency") or "KWD"
+
+    lines = [
+        "✅ *تم تأكيد الحجز* — USHSPA",
+        "",
+        f"عزيزي {name}،",
+        "",
+        "تم تأكيد حجزك بنجاح. تفاصيل الحجز:",
+        "",
+        f"📅 *التاريخ:* {date_str}",
+        f"🕐 *الوقت:* {time_range}",
+    ]
+    if context.get("therapist_name"):
+        lines.append(f"💆 *المعالج/ة:* {context['therapist_name']}")
+    if context.get("service_name"):
+        lines.append(f"🧴 *الخدمة:* {context['service_name']}")
+    if context.get("branch_name"):
+        lines.append(f"📍 *الفرع:* {context['branch_name']}")
+    if amount:
+        lines.append(f"💳 *المبلغ المدفوع:* {amount} {currency}")
+    if context.get("booking_reference"):
+        lines.append(f"🔖 *رقم المرجع:* {context['booking_reference']}")
+
+    lines += [
+        "",
+        "نتطلع للترحيب بك! يرجى الحضور قبل الموعد بـ 5 دقائق.",
+        "",
+        "للمساعدة، تواصل معنا في أي وقت.",
+        "— فريق USHSPA",
+    ]
+    return "\n".join(lines)
+
+
+def _sms_message_ar(context: dict, customer_name: str) -> str:
+    """Compose a concise Arabic SMS confirmation message."""
+    name = customer_name.split()[0] if customer_name else "عميلنا"
+    date_str = context["appointment_date"]
+    time_str = context["appointment_time"]
+    booking_number = context.get("booking_number") or context.get("booking_reference") or ""
+    ref_part = f" رقم المرجع: {booking_number}" if booking_number else ""
+    return (
+        f"USHSPA:\n"
+        f"مرحباً {name}، تم تأكيد حجزك في {date_str} الساعة {time_str}.{ref_part} نتشرف بزيارتكم!"
+    )
+
+
+def _whatsapp_pending_payment_message_ar(
+    context: dict, customer_name: str, payment_link: str
+) -> str:
+    """Compose Arabic WhatsApp message for confirmed bookings requiring payment."""
+    name = customer_name or "عميلنا الكريم"
+    date_str = context["appointment_date"]
+    time_str = context["appointment_time"]
+    end_time_str = context.get("appointment_end_time") or ""
+    time_range = f"{time_str}–{end_time_str}" if end_time_str else time_str
+    amount = context.get("total_amount") or ""
+    currency = context.get("currency") or "KWD"
+
+    lines = [
+        "📋 *تأكيد الحجز – يلزم الدفع* — USHSPA",
+        "",
+        f"عزيزي {name}،",
+        "",
+        "تم تأكيد حجزك! يرجى إتمام الدفع لتأمين موعدك.",
+        "",
+        f"📅 *التاريخ:* {date_str}",
+        f"🕐 *الوقت:* {time_range}",
+    ]
+    if context.get("therapist_name"):
+        lines.append(f"💆 *المعالج/ة:* {context['therapist_name']}")
+    if context.get("service_name"):
+        lines.append(f"🧴 *الخدمة:* {context['service_name']}")
+    if context.get("branch_name"):
+        lines.append(f"📍 *الفرع:* {context['branch_name']}")
+    if amount:
+        lines.append(f"💰 *المبلغ المستحق:* {amount} {currency}")
+    if context.get("booking_reference"):
+        lines.append(f"🔖 *المرجع:* {context['booking_reference']}")
+
+    lines += [
+        "",
+        f"💳 *ادفع الآن:* {payment_link}",
+        "",
+        "موعدك محجوز. يرجى الدفع قبل الموعد لتجنب الإلغاء.",
+        "",
+        "للمساعدة، تواصل معنا في أي وقت.",
+        "— فريق USHSPA",
+    ]
+    return "\n".join(lines)
+
+
+def _sms_pending_payment_message_ar(
+    context: dict, customer_name: str, payment_link: str
+) -> str:
+    """Concise Arabic SMS for confirmed bookings requiring payment."""
+    name = customer_name.split()[0] if customer_name else "عميلنا"
+    date_str = context["appointment_date"]
+    time_str = context["appointment_time"]
+    amount = context.get("total_amount") or ""
+    currency = context.get("currency") or "KWD"
+    amount_part = f" {amount} {currency}" if amount else ""
+    return (
+        f"USHSPA: مرحباً {name}، تم تأكيد حجزك في {date_str} الساعة {time_str}. "
+        f"يرجى إتمام الدفع{amount_part} لتأمين موعدك: {payment_link}"
+    )
+
+
 class BookingConfirmedHandler:
     """
     Processes booking.confirmed events.
@@ -995,7 +1110,10 @@ class BookingConfirmedHandler:
         if whatsapp_verified:
             wa_recipient = ChannelResolver.resolve_whatsapp_recipient(data)
             if wa_recipient:
-                wa_body = _whatsapp_message(context, wa_recipient.name or customer_name)
+                if str(wa_recipient.language).strip().lower().startswith("en"):
+                    wa_body = _whatsapp_message(context, wa_recipient.name or customer_name)
+                else:
+                    wa_body = _whatsapp_message_ar(context, wa_recipient.name or customer_name)
                 req_wa = NotificationRequest(
                     event_id=envelope.event_id_str,
                     recipient=wa_recipient,
@@ -1028,7 +1146,10 @@ class BookingConfirmedHandler:
         if not whatsapp_sent:
             sms_recipient = ChannelResolver.resolve_sms_recipient(data)
             if sms_recipient:
-                sms_body = _sms_message(context, sms_recipient.name or customer_name)
+                if str(sms_recipient.language).strip().lower().startswith("en"):
+                    sms_body = _sms_message(context, sms_recipient.name or customer_name)
+                else:
+                    sms_body = _sms_message_ar(context, sms_recipient.name or customer_name)
                 req_sms = NotificationRequest(
                     event_id=envelope.event_id_str,
                     recipient=sms_recipient,
@@ -1134,9 +1255,14 @@ class BookingConfirmedHandler:
         if whatsapp_verified:
             wa_recipient = ChannelResolver.resolve_whatsapp_recipient(data)
             if wa_recipient:
-                wa_body = _whatsapp_pending_payment_message(
-                    context, wa_recipient.name or customer_name, payment_link
-                )
+                if str(wa_recipient.language).strip().lower().startswith("en"):
+                    wa_body = _whatsapp_pending_payment_message(
+                        context, wa_recipient.name or customer_name, payment_link
+                    )
+                else:
+                    wa_body = _whatsapp_pending_payment_message_ar(
+                        context, wa_recipient.name or customer_name, payment_link
+                    )
                 req_wa = NotificationRequest(
                     event_id=envelope.event_id_str,
                     recipient=wa_recipient,
@@ -1171,9 +1297,14 @@ class BookingConfirmedHandler:
         if not whatsapp_sent:
             sms_recipient = ChannelResolver.resolve_sms_recipient(data)
             if sms_recipient:
-                sms_body = _sms_pending_payment_message(
-                    context, sms_recipient.name or customer_name, payment_link
-                )
+                if str(sms_recipient.language).strip().lower().startswith("en"):
+                    sms_body = _sms_pending_payment_message(
+                        context, sms_recipient.name or customer_name, payment_link
+                    )
+                else:
+                    sms_body = _sms_pending_payment_message_ar(
+                        context, sms_recipient.name or customer_name, payment_link
+                    )
                 req_sms = NotificationRequest(
                     event_id=envelope.event_id_str,
                     recipient=sms_recipient,

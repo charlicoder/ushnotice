@@ -33,18 +33,26 @@ class GiftRedeemedPurchaseHandler:
         
         recipient_name = recipient_data.get("name") or "Valued Customer"
         recipient_phone = data.get("recipient_phone") or recipient_data.get("phone_number") or ""
-        sender_lang = str(
-            data.get("sender_language")
-            or sender_data.get("language_preference")
-            or sender_data.get("language")
-            or "en"
-        ).lower()
-        recipient_language = str(
-            data.get("recipient_language")
-            or recipient_data.get("language_preference")
-            or recipient_data.get("language")
-            or "en"
-        ).lower()
+        sender_lang = (
+            "en"
+            if str(
+                data.get("sender_language")
+                or sender_data.get("language_preference")
+                or sender_data.get("language")
+                or ""
+            ).strip().lower().startswith("en")
+            else "ar"
+        )
+        recipient_language = (
+            "en"
+            if str(
+                data.get("recipient_language")
+                or recipient_data.get("language_preference")
+                or recipient_data.get("language")
+                or ""
+            ).strip().lower().startswith("en")
+            else "ar"
+        )
 
         # Normalise phone digits to detect self-gifting
         sender_digits = "".join(c for c in sender_phone if c.isdigit())
@@ -57,10 +65,10 @@ class GiftRedeemedPurchaseHandler:
                 logger.info("gift_redeemed_sender_skipped_self_gift", gift_id=gift_id)
             else:
                 try:
-                    if sender_lang == "ar":
-                        wa_body_sender = f"🎁 تم استخدام الهدية — قام {recipient_name} باستخدام هديتك في USHSPA!"
-                    else:
+                    if sender_lang == "en":
                         wa_body_sender = f"🎁 Gift Redeemed — {recipient_name} has redeemed your gift at USHSPA!"
+                    else:
+                        wa_body_sender = f"🎁 تم استخدام الهدية — قام {recipient_name} باستخدام هديتك في USHSPA!"
                     sender_payload = {
                         "phone_number": sender_phone,
                         "customer_name": sender_name,
@@ -87,10 +95,10 @@ class GiftRedeemedPurchaseHandler:
         # ── Notify RECIPIENT ──────────────────────────────────────────────
         if recipient_phone:
             try:
-                if recipient_language == "ar":
-                    wa_body_recipient = "تم استخدام هديتك في USHSPA بنجاح! شكراً لك."
-                else:
+                if recipient_language == "en":
                     wa_body_recipient = "Your USHSPA gift has been successfully redeemed! Thank you."
+                else:
+                    wa_body_recipient = "تم استخدام هديتك في USHSPA بنجاح! شكراً لك."
 
                 recipient_payload = {
                     "phone_number": recipient_phone,

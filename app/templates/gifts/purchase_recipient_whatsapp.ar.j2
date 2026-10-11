@@ -1,1 +1,8 @@
-{{ message_body }}
+{% if message_body and not ('You received a gift' in message_body or 'Dear ' in message_body) %}{{ message_body }}{% else %}🎁 *لقد استلمت هدية من {{ sender_name }}!* — USHSPA
+
+رمز الهدية السري: *{{ secret_code }}*
+{% if expire_date %}تاريخ الانتهاء: {{ expire_date }}
+{% endif %}{% if recipient_password %}كلمة المرور لتسجيل الدخول: {{ recipient_password }}
+{% elif is_new_user %}تم إنشاء حساب جديد لك. قم بتحميل تطبيقنا وتعيين كلمة المرور:
+{{ app_install_url | default('https://onelink.to/ushspa') }}
+{% endif %}🌐 عرض بطاقة الهدية: {{ gift_card_url }}{% endif %}

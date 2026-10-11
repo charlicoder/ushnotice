@@ -1,4 +1,4 @@
-📋 *تأكيد الحجز – يلزم الدفع* — USHSPA
+{% if message_body and not ('Payment Required' in message_body or 'Dear ' in message_body) %}{{ message_body }}{% else %}📋 *تأكيد الحجز – يلزم الدفع* — USHSPA
 
 عزيزي {{ customer_name | default('عميلنا الكريم') }}،
 
@@ -17,4 +17,4 @@
 موعدك محجوز. يرجى الدفع قبل الموعد لتجنب الإلغاء.
 
 للمساعدة، تواصل معنا في أي وقت.
-— فريق USHSPA
+— فريق USHSPA{% endif %}

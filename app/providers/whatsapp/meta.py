@@ -92,7 +92,7 @@ class MetaWhatsAppProvider:
             payload = self._build_template_payload(
                 to=wa_to_clean,
                 template_name=template_name,
-                language=template_language or "en",
+                language=template_language or "ar",
                 components=template_components or [],
             )
         else:

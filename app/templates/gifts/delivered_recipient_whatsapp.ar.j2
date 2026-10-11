@@ -1,1 +1,4 @@
-{{ message_body }}
+{% if message_body and not ('Your USHSPA Physical Gift' in message_body) %}{{ message_body }}{% else %}📦 *تم توصيل هديتك المادية من USHSPA!*
+
+يرجى تأكيد الاستلام عبر الرابط التالي:
+{{ gift_card_url }}{% endif %}

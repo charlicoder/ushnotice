@@ -69,9 +69,9 @@ class ChannelResolver:
         try:
             default_from_settings = get_settings().DEFAULT_LANGUAGE
         except Exception:
-            default_from_settings = "en"
-        fallback = default_lang or default_from_settings or "en"
-        return "ar" if str(fallback).strip().lower().startswith("ar") else "en"
+            default_from_settings = "ar"
+        fallback = default_lang or default_from_settings or "ar"
+        return "en" if str(fallback).strip().lower().startswith("en") else "ar"
 
     @staticmethod
     def resolve_sms_recipient(
@@ -126,7 +126,17 @@ class ChannelResolver:
         payload: dict[str, Any],
         default_lang: str | None = None,
     ) -> Recipient | None:
-        """Extract Email recipient from payload."""
+        """Extract Email recipient from payload.
+
+        Returns None if SKIP_SENDING_EMIAL is True or if no email address is present.
+        """
+        try:
+            settings = get_settings()
+            if settings.SKIP_SENDING_EMIAL or settings.SKIP_SENDING_EMAIL or not settings.EMAIL_ENABLED:
+                return None
+        except Exception:
+            pass
+
         email = payload.get("email") or payload.get("customer_email")
         if not email:
             for wrap in ("customer", "customer_data", "user", "user_data"):
