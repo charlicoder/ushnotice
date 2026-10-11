@@ -247,8 +247,8 @@ class UshanrClient:
     async def create_credit_note(
         self,
         *,
-        company_id: str,
-        journal_id: str,
+        company_id: str | None = None,
+        journal_id: str | None = None,
         source_document_type: str,
         source_document_id: str,
         notes: str | None = None,
@@ -266,8 +266,6 @@ class UshanrClient:
         Returns the response dict with invoice_id, invoice_name, state, amount_total.
         """
         body: dict[str, Any] = {
-            "company_id": company_id,
-            "journal_id": journal_id,
             "source_document_type": source_document_type,
             "source_document_id": source_document_id,
             "notes": notes,
@@ -277,6 +275,10 @@ class UshanrClient:
                 else cancellation_date
             ),
         }
+        if company_id:
+            body["company_id"] = str(company_id)
+        if journal_id:
+            body["journal_id"] = str(journal_id)
         if cancellation_fee is not None:
             body["cancellation_fee"] = float(cancellation_fee)
         if refund_amount is not None:
