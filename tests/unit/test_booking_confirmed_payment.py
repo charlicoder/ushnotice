@@ -237,13 +237,10 @@ async def test_booking_confirmed_handler_no_payment_when_no_payments_meta():
 async def test_booking_confirmed_pending_payment_sends_payment_link_notifications():
     """
     When payment_status=pending the handler must send payment-link notifications
-    (WhatsApp/SMS/Email) instead of the standard 'booking confirmed' messages.
-    The demo payment link is used when no payment_link is available in event data.
+    Booking SMS/WhatsApp messages sent ONLY when payment_status=success.
+    When payment_status=pending, SMS/WhatsApp notifications are suppressed.
     """
-    from app.events.handlers.booking.booking_confirmed import (
-        BookingConfirmedHandler,
-        _DEMO_PAYMENT_LINK,
-    )
+    from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
     from app.events.handlers.base import HandlerContext
 
     handler = BookingConfirmedHandler()
@@ -258,6 +255,7 @@ async def test_booking_confirmed_pending_payment_sends_payment_link_notification
     }
     envelope = _make_confirmed_envelope(data)
     mock_ctx = MagicMock(spec=HandlerContext)
+    mock_ctx.notification_repo = None
 
     mock_notification_service = AsyncMock()
     mock_ushauth_client = AsyncMock()
@@ -278,51 +276,38 @@ async def test_booking_confirmed_pending_payment_sends_payment_link_notification
 
         await handler.handle(envelope, mock_ctx)
 
-    # At least one notification must have been dispatched
-    assert mock_notification_service.send.call_count >= 1
-
-    # Every notification sent must use a pending-payment template and carry payment_link
-    for call in mock_notification_service.send.call_args_list:
-        req = call.args[0] if call.args else call.kwargs.get("notification_request")
-        if req is None:
-            continue
-        # Template name must be the pending-payment variant
-        assert "pending_payment" in req.template_name, (
-            f"Expected pending_payment template, got: {req.template_name}"
-        )
-        # payment_link must be present in template context
-        assert "payment_link" in req.template_context, (
-            f"payment_link missing in template_context for {req.template_name}"
-        )
-        # Demo link must be used when no real link is in the event data
-        assert req.template_context["payment_link"] == _DEMO_PAYMENT_LINK
+    # Notifications must be suppressed when payment_status is pending
+    assert mock_notification_service.send.call_count == 0
 
 
 @pytest.mark.asyncio
-async def test_booking_confirmed_pending_payment_uses_event_payment_link():
+async def test_booking_confirmed_success_payment_sends_notifications_once():
     """
-    When payment_link is present in the event data it must be used instead of the
-    demo link in all pending-payment notifications.
+    When payment_status=success, SMS/WhatsApp notifications must be sent once,
+    and skipped if already sent for the booking.
     """
     from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
     from app.events.handlers.base import HandlerContext
 
-    REAL_PAYMENT_LINK = "https://pay.ushspa.com/invoice/abc-123-xyz"
-
     handler = BookingConfirmedHandler()
     data = {
         **CONFIRMED_BOOKING_DATA,
-        "payment_status": "pending",
-        "payment_link": REAL_PAYMENT_LINK,
+        "payment_status": "success",
+        "whatsapp_verified": True,
         "payment_data": {
-            "status": "Pending",
-            "is_paid": False,
+            "status": "paid",
+            "is_paid": True,
             "invoice_id": "7106602",
         },
     }
     envelope = _make_confirmed_envelope(data)
     mock_ctx = MagicMock(spec=HandlerContext)
 
+    mock_notification_repo = AsyncMock()
+    # First invocation: not sent yet
+    mock_notification_repo.has_booking_notification = AsyncMock(return_value=False)
+    mock_ctx.notification_repo = mock_notification_repo
+
     mock_notification_service = AsyncMock()
     mock_ushauth_client = AsyncMock()
     mock_ushauth_client.create_appointment_cache = AsyncMock(return_value={})
@@ -334,6 +319,7 @@ async def test_booking_confirmed_pending_payment_uses_event_payment_link():
         patch("app.events.handlers.booking.booking_confirmed.UshAuthClient",
               return_value=mock_ushauth_client),
         patch("app.integrations.ushbooknpay_client.GatewayHttpClient") as mock_gw,
+        patch("app.events.handlers.booking.booking_confirmed.trigger_booking_invoice", new_callable=AsyncMock),
     ):
         mock_gw_instance = MagicMock()
         mock_gw_instance.post = AsyncMock(return_value={})
@@ -342,14 +328,135 @@ async def test_booking_confirmed_pending_payment_uses_event_payment_link():
 
         await handler.handle(envelope, mock_ctx)
 
-    for call in mock_notification_service.send.call_args_list:
-        req = call.args[0] if call.args else call.kwargs.get("notification_request")
-        if req is None:
-            continue
-        assert req.template_context.get("payment_link") == REAL_PAYMENT_LINK, (
-            f"Expected real payment link in {req.template_name}, "
-            f"got: {req.template_context.get('payment_link')}"
-        )
+    assert mock_notification_service.send.call_count >= 1
+
+    # Second invocation: already sent (has_booking_notification returns True)
+    mock_notification_repo.has_booking_notification = AsyncMock(return_value=True)
+    mock_notification_service.send.reset_mock()
+
+    with (
+        patch("app.events.handlers.booking.booking_confirmed.NotificationService",
+              return_value=mock_notification_service),
+        patch("app.events.handlers.booking.booking_confirmed.UshAuthClient",
+              return_value=mock_ushauth_client),
+        patch("app.integrations.ushbooknpay_client.GatewayHttpClient") as mock_gw,
+        patch("app.events.handlers.booking.booking_confirmed.trigger_booking_invoice", new_callable=AsyncMock),
+    ):
+        mock_gw_instance = MagicMock()
+        mock_gw_instance.post = AsyncMock(return_value={})
+        mock_gw_instance.aclose = AsyncMock()
+        mock_gw.return_value = mock_gw_instance
+
+        await handler.handle(envelope, mock_ctx)
+
+    # Must be skipped on duplicate run
+    assert mock_notification_service.send.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_booking_updated_sends_arabic_by_default():
+    """
+    For booking update/reschedule, SMS/WhatsApp language must be Arabic unless
+    explicitly told for English.
+    """
+    from app.events.handlers.booking.booking_updated import BookingUpdatedHandler
+    from app.events.schemas.envelope import EventEnvelope
+    from app.events.handlers.base import HandlerContext
+
+    handler = BookingUpdatedHandler()
+    envelope = EventEnvelope(
+        event_id=str(uuid.uuid4()),
+        event_type="booking.updated",
+        occurred_at="2026-10-13T10:00:00Z",
+        source="ushbooknpay",
+        data={
+            "booking_id": "booking-update-1",
+            "booking_number": "BOK/2026/10/000099",
+            "customer_id": "cust-99",
+            "customer_name": "Sara Ahmed",
+            "customer_phone": "+96599887766",
+            "appointment_date": "2026-10-20",
+            "appointment_time": "15:00:00",
+            "service_name": "Relaxing Massage",
+            "branch_name": "Kuwait City",
+            "status": "confirmed",
+            "payment_status": "success",
+            "whatsapp_verified": True,
+        },
+    )
+    mock_ctx = MagicMock(spec=HandlerContext)
+    mock_notification_service = AsyncMock()
+    mock_ushauth_client = AsyncMock()
+    mock_ushauth_client.update_appointment_cache_by_booking_id = AsyncMock(return_value={"records_updated": 1})
+    mock_ushauth_client.aclose = AsyncMock()
+
+    with (
+        patch("app.events.handlers.booking.booking_updated.NotificationService",
+              return_value=mock_notification_service),
+        patch("app.events.handlers.booking.booking_updated.UshAuthClient",
+              return_value=mock_ushauth_client),
+    ):
+        await handler.handle(envelope, mock_ctx)
+
+    assert mock_notification_service.send.call_count >= 1
+    req = mock_notification_service.send.call_args[0][0]
+    # Arabic content must be present
+    assert "تم تحديث موعد الحجز" in req.template_context["message_body"]
+    assert req.template_context["language"] == "ar"
+
+
+@pytest.mark.asyncio
+async def test_booking_updated_sends_english_when_explicitly_requested():
+    """
+    For booking update/reschedule, SMS/WhatsApp language is English only when
+    explicitly requested.
+    """
+    from app.events.handlers.booking.booking_updated import BookingUpdatedHandler
+    from app.events.schemas.envelope import EventEnvelope
+    from app.events.handlers.base import HandlerContext
+
+    handler = BookingUpdatedHandler()
+    envelope = EventEnvelope(
+        event_id=str(uuid.uuid4()),
+        event_type="booking.updated",
+        occurred_at="2026-10-13T10:00:00Z",
+        source="ushbooknpay",
+        data={
+            "booking_id": "booking-update-2",
+            "booking_number": "BOK/2026/10/000100",
+            "customer_id": "cust-100",
+            "customer_name": "John Doe",
+            "customer_phone": "+96599887755",
+            "language_preference": "en",
+            "appointment_date": "2026-10-22",
+            "appointment_time": "16:00:00",
+            "service_name": "Deep Tissue",
+            "branch_name": "Salmiya",
+            "status": "confirmed",
+            "payment_status": "success",
+            "whatsapp_verified": True,
+        },
+    )
+    mock_ctx = MagicMock(spec=HandlerContext)
+    mock_notification_service = AsyncMock()
+    mock_ushauth_client = AsyncMock()
+    mock_ushauth_client.update_appointment_cache_by_booking_id = AsyncMock(return_value={"records_updated": 1})
+    mock_ushauth_client.aclose = AsyncMock()
+
+    with (
+        patch("app.events.handlers.booking.booking_updated.NotificationService",
+              return_value=mock_notification_service),
+        patch("app.events.handlers.booking.booking_updated.UshAuthClient",
+              return_value=mock_ushauth_client),
+    ):
+        await handler.handle(envelope, mock_ctx)
+
+    assert mock_notification_service.send.call_count >= 1
+    req = mock_notification_service.send.call_args[0][0]
+    # English content must be present
+    assert "Booking Updated" in req.template_context["message_body"]
+    assert req.template_context["language"] == "en"
+
 
 
 @pytest.mark.asyncio

@@ -406,20 +406,36 @@ class VoucherActiveHandler:
         voucher_id = str(data.get("id") or "")
         vctx = _build_voucher_context(data)
 
-        # ── 1. Create payment record in ushbooknpay ──────────────────────────
+        # ── 1. Create invoice in ushanr FIRST ────────────────────────────────
+        invoice_result: dict[str, Any] | None = None
+        if voucher_id:
+            try:
+                invoice_result = await trigger_voucher_invoice(
+                    data, correlation_id=correlation_id
+                )
+            except Exception as inv_err:
+                logger.warning(
+                    "voucher_active_invoice_trigger_failed",
+                    voucher_id=voucher_id,
+                    error=str(inv_err),
+                    correlation_id=correlation_id,
+                )
+
+        # ── 2. Create payment record in ushbooknpay against that invoice ──────
         await self._create_payment_record(
             data=data,
             voucher_id=voucher_id,
             vctx=vctx,
             correlation_id=correlation_id,
+            invoice_result=invoice_result,
         )
 
-        # ── 2. Notify SENDER ─────────────────────────────────────────────────
+        # ── 3. Notify SENDER ─────────────────────────────────────────────────
         sender_details: dict = data.get("sender_details") or {}
         sender_phone = sender_details.get("phone_number") or data.get("sender_phone") or ""
         sender_name = vctx["sender_name"]
 
-        # ── 3. Notify RECIPIENT ──────────────────────────────────────────────
+        # ── 4. Notify RECIPIENT ──────────────────────────────────────────────
         recipient_details: dict = data.get("recipient_details") or {}
         recipient_phone = (
             recipient_details.get("phone_number")
@@ -477,6 +493,7 @@ class VoucherActiveHandler:
         voucher_id: str,
         vctx: dict,
         correlation_id: str | None,
+        invoice_result: dict[str, Any] | None = None,
     ) -> None:
         """POST a payment record to ushbooknpay using voucher_id as the record ID."""
         if not voucher_id:
@@ -487,9 +504,18 @@ class VoucherActiveHandler:
             payment_data: dict = data.get("payment_data") or {}
             sender_details: dict = data.get("sender_details") or data.get("sender_data") or {}
 
-            # ── Derive gateway-level fields from payment_data ──────────────
+            # ── Derive gateway-level and invoice fields ───────────────────
+            invoice_number: str | None = (
+                (invoice_result.get("invoice_name") if invoice_result else None)
+                or data.get("invoice_number")
+                or payment_data.get("invoice_number")
+                or None
+            )
+            invoice_id_ushanr: str | None = (
+                (invoice_result.get("invoice_id") if invoice_result else None)
+            )
             payment_id: str = str(data.get("payment_id") or payment_data.get("invoiceId") or payment_data.get("invoice_id") or "")
-            invoice_id: str = str(payment_data.get("invoice_id") or payment_data.get("invoiceId") or payment_data.get("InvoiceId") or "")
+            invoice_id: str = invoice_id_ushanr or str(payment_data.get("invoice_id") or payment_data.get("invoiceId") or payment_data.get("InvoiceId") or "")
             invoice_value: Any = (
                 vctx["total_amount"]
                 or payment_data.get("invoiceValue")
@@ -581,6 +607,8 @@ class VoucherActiveHandler:
             for k, v in [
                 ("payment_id", payment_id),
                 ("invoice_id", invoice_id),
+                ("invoice_number", invoice_number),
+                ("ushanr_invoice_id", invoice_id_ushanr),
                 ("invoice_value", invoice_value),
                 ("payment_url", payment_url),
                 ("payment_gateway", normalised_gw),
@@ -620,6 +648,7 @@ class VoucherActiveHandler:
                 ),
                 # ── Invoice & transaction identifiers ──────────────────────
                 "payment_id": payment_id,
+                "invoice_number": invoice_number,
                 "transaction_id": str(
                     payment_data.get("transactionId")
                     or payment_data.get("TransactionId")
@@ -695,8 +724,17 @@ class VoucherActiveHandler:
                     "total_amount": vctx["total_amount"],
                     "total_duration": vctx["total_duration"],
                     "recipient_phone": recipient_phone or vctx.get("recipient_phone") or "",
+                    "recipient_name": vctx.get("recipient_name") or "",
+                    "sender_name": vctx.get("sender_name") or "",
+                    "sender_phone": vctx.get("sender_phone") or "",
                     "addons_price": addons_price,
                     "price_for_extra_time": price_for_extra_time,
+                    "invoice_number": invoice_number,
+                    "invoice_id": invoice_id or None,
+                    "gift_message": vctx.get("gift_message") or "",
+                    "gift_template": vctx.get("gift_template") or "",
+                    "public_token": vctx.get("public_token") or "",
+                    "secret_code": vctx.get("secret_code") or "",
                 },
                 # ── Raw gateway data → payment_data JSONB ──────────────────
                 "payment_data": built_payment_data,
@@ -968,7 +1006,3 @@ class VoucherActiveHandler:
                 logger.warning("voucher_active_recipient_email_failed", voucher_id=voucher_id, error=str(exc))
         else:
             logger.info("voucher_active_recipient_email_skipped_no_email", voucher_id=voucher_id)
-
-        # ── Invoice: create in ushanr (non-blocking) ──────────────────────────
-        if voucher_id:
-            await trigger_voucher_invoice(envelope.data, correlation_id=correlation_id)

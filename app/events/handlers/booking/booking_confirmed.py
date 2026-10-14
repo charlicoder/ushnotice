@@ -1047,46 +1047,76 @@ class BookingConfirmedHandler:
 
 
         # ── 4. Create invoice in ushanr (non-blocking) ────────────────────────
-        # Only create for paid bookings (not pending-payment bookings).
-        if booking_id and is_paid:
+        # Create invoice record with status=posted for booking ONLY when payment_status != 'pending' (when payment is successful)
+        if booking_id and not payment_is_pending:
             await trigger_booking_invoice(data, correlation_id=correlation_id)
+        elif booking_id and payment_is_pending:
+            logger.info(
+                "booking_invoice_skipped_payment_pending",
+                booking_id=booking_id,
+                message="Invoice creation skipped because payment_status=pending. Invoice will be created when payment_status=success.",
+            )
 
-        # payment_status=pending → booking slot reserved, but payment not yet made.
-        #                          Send payment-link messages so the customer can pay.
-        # All other statuses    → standard "booking confirmed" messages.
+        # SMS/WhatsApp messages sent ONLY when payment_status=success and sent ONCE per booking.
+        is_payment_success = str(payment_status or "").strip().lower() in (
+            "success",
+            "paid",
+            "completed",
+            "successful",
+            "rewarded",
+        )
         logger.info(
             "booking_confirmed_notification_dispatch",
             booking_id=booking_id,
             payment_status=payment_status,
+            is_payment_success=is_payment_success,
             payment_is_pending=payment_is_pending,
             whatsapp_verified=whatsapp_verified,
             has_phone=bool(data.get("customer_phone")),
             has_email=bool(data.get("customer_email")),
         )
-        if payment_is_pending:
-            await self._send_pending_payment_notifications(
-                envelope=envelope,
-                service=service,
-                data=data,
-                context=context,
-                customer_id=customer_id,
+        if not is_payment_success:
+            logger.info(
+                "booking_notifications_suppressed_payment_not_success",
                 booking_id=booking_id,
-                customer_name=customer_name,
-                correlation_id=correlation_id,
-                whatsapp_verified=whatsapp_verified,
+                payment_status=payment_status,
+                message="SMS/WhatsApp messages sent only when payment_status=success",
             )
         else:
-            await self._send_confirmed_notifications(
-                envelope=envelope,
-                service=service,
-                data=data,
-                context=context,
-                customer_id=customer_id,
-                booking_id=booking_id,
-                customer_name=customer_name,
-                correlation_id=correlation_id,
-                whatsapp_verified=whatsapp_verified,
-            )
+            # Check if SMS/WhatsApp confirmation notification was already sent (sent only once)
+            already_sent = False
+            if booking_id and getattr(ctx, "notification_repo", None):
+                try:
+                    already_sent = await ctx.notification_repo.has_booking_notification(
+                        booking_id=booking_id,
+                        channels=["whatsapp", "sms"],
+                        template_prefix="booking/confirmed",
+                    )
+                except Exception as check_exc:
+                    logger.warning(
+                        "booking_confirmed_has_notification_check_failed",
+                        booking_id=booking_id,
+                        error=str(check_exc),
+                    )
+
+            if already_sent:
+                logger.info(
+                    "booking_confirmed_notifications_already_sent",
+                    booking_id=booking_id,
+                    message="SMS/WhatsApp confirmation message already sent for this booking; skipping duplicate.",
+                )
+            else:
+                await self._send_confirmed_notifications(
+                    envelope=envelope,
+                    service=service,
+                    data=data,
+                    context=context,
+                    customer_id=customer_id,
+                    booking_id=booking_id,
+                    customer_name=customer_name,
+                    correlation_id=correlation_id,
+                    whatsapp_verified=whatsapp_verified,
+                )
 
     # ── Notification sub-methods ──────────────────────────────────────────────
 

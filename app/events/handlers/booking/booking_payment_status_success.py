@@ -17,6 +17,8 @@ from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.integrations.ushauth_client import UshAuthClient
+from app.integrations.ushbooknpay_client import UshBookNPayClient
+from app.invoicing.triggers import trigger_booking_invoice
 
 logger = get_logger(__name__)
 
@@ -25,7 +27,7 @@ class BookingPaymentStatusSuccessHandler:
     """Processes ``booking.updated_payment_status_to_success`` events.
 
     Updates the appointment cache payment_status in ushauth to 'success'
-    so that the service-arrangement schedule grid reflects the desk payment.
+    and triggers creation of the invoice in ushanr.
     """
 
     event_type: str = "booking.updated_payment_status_to_success"
@@ -76,3 +78,45 @@ class BookingPaymentStatusSuccessHandler:
             raise
         finally:
             await ushauth_client.aclose()
+
+        # ── Trigger invoice creation in ushanr ─────────────────────────────
+        try:
+            invoice_data = dict(data)
+            # Ensure full booking data is available if event payload only had summary fields
+            if not invoice_data.get("service_id") or not invoice_data.get("total_amount"):
+                booknpay_client = UshBookNPayClient()
+                try:
+                    b_resp = await booknpay_client.get_booking(booking_id, correlation_id=correlation_id)
+                    b_data = b_resp.get("data") if isinstance(b_resp, dict) and "data" in b_resp else b_resp
+                    if isinstance(b_data, dict):
+                        invoice_data = {**b_data, **invoice_data}
+                finally:
+                    await booknpay_client._client.aclose()
+            await trigger_booking_invoice(invoice_data, correlation_id=correlation_id)
+        except Exception as inv_exc:
+            logger.warning(
+                "booking_payment_status_success_invoice_trigger_failed",
+                booking_id=booking_id,
+                error=str(inv_exc),
+                event_id=correlation_id,
+            )
+
+        # ── Send booking confirmation SMS/WhatsApp (only when payment_status=success and once)
+        try:
+            from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
+
+            confirmed_envelope = envelope.model_copy(
+                update={
+                    "event_type": "booking.confirmed",
+                    "data": {**invoice_data, "payment_status": "success"},
+                }
+            )
+            confirmed_handler = BookingConfirmedHandler()
+            await confirmed_handler.handle(confirmed_envelope, ctx)
+        except Exception as notify_exc:
+            logger.warning(
+                "booking_payment_status_success_notification_failed",
+                booking_id=booking_id,
+                error=str(notify_exc),
+                event_id=correlation_id,
+            )

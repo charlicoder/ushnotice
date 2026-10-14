@@ -480,6 +480,35 @@ class NotificationRepository:
         result = await self._db.execute(stmt)
         return list(result.scalars().all()), total
 
+    async def has_booking_notification(
+        self,
+        booking_id: str,
+        *,
+        channels: list[str] | tuple[str, ...] | None = None,
+        template_prefix: str | None = None,
+    ) -> bool:
+        """Check if a notification has already been created/sent for a booking."""
+        stmt = (
+            select(func.count())
+            .select_from(Notification)
+            .where(
+                Notification.booking_id == str(booking_id),
+                Notification.status.in_([
+                    NotificationStatus.SENT.value,
+                    NotificationStatus.DELIVERED.value,
+                    NotificationStatus.CREATED.value,
+                    "sent",
+                    "delivered",
+                    "created",
+                ]),
+            )
+        )
+        if channels:
+            stmt = stmt.where(Notification.channel.in_(channels))
+        if template_prefix:
+            stmt = stmt.where(Notification.template_name.like(f"{template_prefix}%"))
+        return (await self._db.execute(stmt)).scalar_one() > 0
+
     async def list_failed(
         self,
         *,

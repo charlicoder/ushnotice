@@ -172,17 +172,28 @@ def build_default_registry() -> HandlerRegistry:
             _alias.event_type = _alias_type
             registry.register(_alias)
 
+    # Register BookingUpdatedHandler for booking.rescheduled events as well
+    for _resched_key in ("booking.rescheduled", "booking_rescheduled"):
+        if not registry.has_handler(_resched_key):
+            _r_handler = BookingUpdatedHandler()
+            _r_handler.event_type = _resched_key
+            registry.register(_r_handler)
+
     # ── Payment handlers ──────────────────────────────────────────────────────
     from app.events.handlers.payment.payment_success import PaymentSuccessHandler
     from app.events.handlers.payment.payment_failed import PaymentFailedHandler
     from app.events.handlers.payment.payment_refunded import PaymentRefundedHandler
     from app.events.handlers.payment.payment_pending import PaymentPendingHandler
+    from app.events.handlers.payment.payment_link_paid import PaymentLinkPaidHandler
+    from app.events.handlers.payment.payment_link_failed import PaymentLinkFailedHandler
 
     for _h in [
         PaymentSuccessHandler(),
         PaymentFailedHandler(),
         PaymentRefundedHandler(),
         PaymentPendingHandler(),
+        PaymentLinkPaidHandler(),
+        PaymentLinkFailedHandler(),
     ]:
         registry.register(_h)
         _alias_type = _h.event_type.replace(".", "_")

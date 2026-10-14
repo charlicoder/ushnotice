@@ -164,7 +164,7 @@ async def trigger_booking_invoice(
 
         # 2. Create + post the invoice
         p_status = str(data.get("payment_status") or "").lower()
-        is_paid = p_status in ("paid", "success", "rewarded") or bool(data.get("payment_id"))
+        is_paid = p_status in ("paid", "success", "rewarded", "completed")
         tot_amount = Decimal(str(data.get("total_amount") or 0))
 
         result = await client.create_invoice(
@@ -179,9 +179,9 @@ async def trigger_booking_invoice(
             notes=notes,
             lines=lines,
             is_paid=is_paid,
-            payment_status=p_status or "paid",
-            amount_paid=tot_amount,
-            payment_id=str(data.get("payment_id") or ""),
+            payment_status=p_status or "pending",
+            amount_paid=tot_amount if is_paid else Decimal("0"),
+            payment_id=str(data.get("payment_id") or "") if is_paid else "",
         )
         await _link_invoice_to_payments("booking", booking_id, result)
         logger.info(
@@ -354,18 +354,18 @@ async def trigger_gift_purchase_invoice(
 async def trigger_voucher_invoice(
     data: dict[str, Any],
     correlation_id: str | None = None,
-) -> None:
+) -> dict[str, Any] | None:
     """
     Create an invoice for a classic gift voucher purchase (voucher.active).
 
-    Non-blocking: any error is logged as a warning and swallowed.
+    Non-blocking: any error is logged as a warning and returns None.
     """
     if not _invoicing_enabled():
-        return
+        return None
 
     voucher_id = str(data.get("id") or data.get("voucher_id") or "")
     if not voucher_id:
-        return
+        return None
 
     company_id, journal_id, _ = _get_ids()
 
@@ -381,7 +381,7 @@ async def trigger_voucher_invoice(
     voucher_number = str(data.get("voucher_number") or "")
     lines = build_voucher_invoice_lines(data)
     if not lines:
-        return
+        return None
 
     client = UshanrClient()
     try:
@@ -408,7 +408,7 @@ async def trigger_voucher_invoice(
             amount_paid=tot_amount,
             payment_id=str(data.get("payment_id") or ""),
         )
-        await _link_invoice_to_payments("gift_voucher", voucher_id, result)
+        await _link_invoice_to_payments("gift_voucher", voucher_id, result, correlation_id=correlation_id)
         logger.info(
             "voucher_invoice_created",
             invoice_id=result.get("invoice_id"),
@@ -416,6 +416,7 @@ async def trigger_voucher_invoice(
             voucher_id=voucher_id,
             correlation_id=correlation_id,
         )
+        return result
     except Exception as exc:
         logger.warning(
             "voucher_invoice_failed",
@@ -423,6 +424,7 @@ async def trigger_voucher_invoice(
             error=str(exc),
             correlation_id=correlation_id,
         )
+        return None
     finally:
         await client.aclose()
 
