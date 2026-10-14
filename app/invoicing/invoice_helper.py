@@ -109,29 +109,9 @@ def build_booking_invoice_lines(data: dict[str, Any]) -> list[dict[str, Any]]:
         })
         return lines
 
-    if payment_type == "gift_voucher":
-        # Gift voucher redemption — service at full price then offset by voucher line
-        total = _d(
-            data.get("total_amount")
-            or pricing.get("total")
-            or data.get("arrangement_price")
-        )
-        lines.append({
-            "account_id": revenue_acct,
-            "name": service_name,
-            "quantity": "1",
-            "unit_price": str(total),
-        })
-        voucher_number = str(data.get("voucher_number") or data.get("voucher_id") or "")
-        redemption_label = f"Gift Voucher Redemption{f' — {voucher_number}' if voucher_number else ''}"
-        lines.append({
-            "account_id": revenue_acct,
-            "name": redemption_label,
-            "quantity": "1",
-            "unit_price": str(total),
-            "discount": "100",  # effectively a zero-out credit
-        })
-        return lines
+    if payment_type == "gift_voucher" or bool(data.get("voucher_id")):
+        # Gift vouchers are already paid and invoiced at purchase; no invoice lines are generated for redemption
+        return []
 
     # Standard paid booking
     arrangement_price = _d(

@@ -103,6 +103,22 @@ async def trigger_booking_invoice(
     if not booking_id:
         return
 
+    # Skip invoice generation for gift voucher redemptions (voucher was already invoiced at purchase)
+    p_type = str(data.get("payment_type") or "").strip().lower()
+    v_id = str(data.get("voucher_id") or (data.get("voucher_data") or {}).get("id") or "").strip()
+    p_method = str(data.get("payment_method") or "").strip().lower()
+    if p_type == "gift_voucher" or (v_id and v_id.lower() != "none") or p_method in ("voucher", "gift_voucher"):
+        logger.info(
+            "booking_invoice_skipped_gift_voucher_redemption",
+            booking_id=booking_id,
+            voucher_id=v_id,
+            payment_type=p_type,
+            payment_method=p_method,
+            correlation_id=correlation_id,
+            message="Skipping invoice creation for gift voucher redemption; voucher was already invoiced at purchase time.",
+        )
+        return
+
     company_id, journal_id, _ = _get_ids()
     settings = get_settings()
 

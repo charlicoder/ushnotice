@@ -1048,8 +1048,20 @@ class BookingConfirmedHandler:
 
         # ── 4. Create invoice in ushanr (non-blocking) ────────────────────────
         # Create invoice record with status=posted for booking ONLY when payment_status != 'pending' (when payment is successful)
-        if booking_id and not payment_is_pending:
+        # Note: Gift voucher redemptions do NOT create an invoice (voucher was invoiced at purchase)
+        is_voucher_redemption = (
+            str(data.get("payment_type") or "").strip().lower() == "gift_voucher"
+            or bool(data.get("voucher_id"))
+            or str(data.get("payment_method") or "").strip().lower() in ("voucher", "gift_voucher")
+        )
+        if booking_id and not payment_is_pending and not is_voucher_redemption:
             await trigger_booking_invoice(data, correlation_id=correlation_id)
+        elif is_voucher_redemption:
+            logger.info(
+                "booking_invoice_skipped_gift_voucher",
+                booking_id=booking_id,
+                message="Invoice creation skipped because booking is redeemed via gift voucher (already invoiced at purchase).",
+            )
         elif booking_id and payment_is_pending:
             logger.info(
                 "booking_invoice_skipped_payment_pending",

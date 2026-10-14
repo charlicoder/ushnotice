@@ -92,7 +92,19 @@ class BookingPaymentStatusSuccessHandler:
                         invoice_data = {**b_data, **invoice_data}
                 finally:
                     await booknpay_client._client.aclose()
-            await trigger_booking_invoice(invoice_data, correlation_id=correlation_id)
+            is_voucher_redemption = (
+                str(invoice_data.get("payment_type") or "").strip().lower() == "gift_voucher"
+                or bool(invoice_data.get("voucher_id"))
+                or str(invoice_data.get("payment_method") or "").strip().lower() in ("voucher", "gift_voucher")
+            )
+            if not is_voucher_redemption:
+                await trigger_booking_invoice(invoice_data, correlation_id=correlation_id)
+            else:
+                logger.info(
+                    "booking_payment_status_success_invoice_skipped_voucher",
+                    booking_id=booking_id,
+                    message="Skipping invoice creation for voucher redemption; voucher was invoiced at purchase.",
+                )
         except Exception as inv_exc:
             logger.warning(
                 "booking_payment_status_success_invoice_trigger_failed",
