@@ -897,3 +897,119 @@ async def test_booking_confirmed_fallback_created_by_user_from_customer():
     assert payload["payment_data"]["invoice_id"] == "112233"
 
 
+@pytest.mark.asyncio
+async def test_booking_confirmed_pending_payment_skips_invoice_and_payment_records():
+    """
+    User requirement:
+    Dont create any invoice for a booking with payment_status=pending.
+    Create invoice and payment records only when payment_status=success for booking.
+    So no invoice with status=posted.
+    """
+    from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
+    from app.events.handlers.base import HandlerContext
+
+    handler = BookingConfirmedHandler()
+    data = {
+        **CONFIRMED_BOOKING_DATA,
+        "payment_status": "pending",
+        "payment_id": "link-12345",
+        "payment_data": {
+            "status": "pending",
+            "is_paid": False,
+        },
+    }
+    envelope = _make_confirmed_envelope(data)
+    mock_ctx = MagicMock(spec=HandlerContext)
+
+    mock_post = AsyncMock(return_value={"id": "pay-1"})
+    mock_ushauth = AsyncMock()
+    mock_ushauth.create_appointment_cache = AsyncMock(return_value={})
+    mock_ushauth.aclose = AsyncMock()
+    mock_notification = AsyncMock()
+
+    with (
+        patch("app.events.handlers.booking.booking_confirmed.NotificationService",
+              return_value=mock_notification),
+        patch("app.events.handlers.booking.booking_confirmed.UshAuthClient",
+              return_value=mock_ushauth),
+        patch("app.integrations.ushbooknpay_client.GatewayHttpClient") as mock_gw,
+        patch("app.events.handlers.booking.booking_confirmed.trigger_booking_invoice",
+              new_callable=AsyncMock) as mock_trigger_inv,
+    ):
+        mock_gw_instance = MagicMock()
+        mock_gw_instance.post = mock_post
+        mock_gw_instance.aclose = AsyncMock()
+        mock_gw.return_value = mock_gw_instance
+
+        await handler.handle(envelope, mock_ctx)
+
+    # 1. trigger_booking_invoice must NOT be called
+    mock_trigger_inv.assert_not_called()
+
+    # 2. Payment record creation must NOT be called
+    payment_calls = [
+        c for c in mock_post.call_args_list
+        if "/api/v1/payments/" in str(c)
+    ]
+    assert len(payment_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_booking_confirmed_success_payment_creates_invoice_and_payment_records():
+    """
+    When payment_status=success, both invoice and payment records must be created.
+    """
+    from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
+    from app.events.handlers.base import HandlerContext
+
+    handler = BookingConfirmedHandler()
+    data = {
+        **CONFIRMED_BOOKING_DATA,
+        "payment_status": "success",
+        "payment_data": {
+            "status": "success",
+            "is_paid": True,
+            "invoice_id": "7106599",
+            "payment_id": "pay-success-123",
+        },
+    }
+    envelope = _make_confirmed_envelope(data)
+    mock_ctx = MagicMock(spec=HandlerContext)
+    mock_notification_repo = AsyncMock()
+    mock_notification_repo.has_booking_notification = AsyncMock(return_value=False)
+    mock_ctx.notification_repo = mock_notification_repo
+
+    mock_post = AsyncMock(return_value={"id": "pay-rec-99"})
+    mock_ushauth = AsyncMock()
+    mock_ushauth.create_appointment_cache = AsyncMock(return_value={})
+    mock_ushauth.aclose = AsyncMock()
+    mock_notification = AsyncMock()
+
+    with (
+        patch("app.events.handlers.booking.booking_confirmed.NotificationService",
+              return_value=mock_notification),
+        patch("app.events.handlers.booking.booking_confirmed.UshAuthClient",
+              return_value=mock_ushauth),
+        patch("app.integrations.ushbooknpay_client.GatewayHttpClient") as mock_gw,
+        patch("app.events.handlers.booking.booking_confirmed.trigger_booking_invoice",
+              new_callable=AsyncMock) as mock_trigger_inv,
+    ):
+        mock_gw_instance = MagicMock()
+        mock_gw_instance.post = mock_post
+        mock_gw_instance.aclose = AsyncMock()
+        mock_gw.return_value = mock_gw_instance
+
+        await handler.handle(envelope, mock_ctx)
+
+    # 1. trigger_booking_invoice must be called
+    mock_trigger_inv.assert_called_once()
+
+    # 2. Payment record creation must be called
+    payment_calls = [
+        c for c in mock_post.call_args_list
+        if "/api/v1/payments/" in str(c)
+    ]
+    assert len(payment_calls) == 1
+
+
+

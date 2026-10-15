@@ -103,6 +103,25 @@ async def trigger_booking_invoice(
     if not booking_id:
         return
 
+    # Never create an invoice for a booking with pending payment status
+    p_status = str(data.get("payment_status") or "").strip().lower()
+    is_explicit_paid = (
+        data.get("is_paid") is True
+        or data.get("is_paid") == "true"
+        or (isinstance(data.get("payment_data"), dict) and data["payment_data"].get("is_paid") is True)
+    )
+    if p_status in ("pending", "not_initiated", "unpaid") or (
+        p_status not in ("paid", "success", "rewarded", "completed") and not is_explicit_paid
+    ):
+        logger.info(
+            "booking_invoice_skipped_payment_not_successful",
+            booking_id=booking_id,
+            payment_status=p_status,
+            correlation_id=correlation_id,
+            message="Skipping invoice creation because booking payment_status is not success/paid.",
+        )
+        return
+
     # Skip invoice generation for gift voucher redemptions (voucher was already invoiced at purchase)
     p_type = str(data.get("payment_type") or "").strip().lower()
     v_id = str(data.get("voucher_id") or (data.get("voucher_data") or {}).get("id") or "").strip()
@@ -178,9 +197,8 @@ async def trigger_booking_invoice(
             email=customer_email,
         )
 
-        # 2. Create + post the invoice
+        # 2. Create + post the invoice (always paid for booking invoices)
         p_status = str(data.get("payment_status") or "").lower()
-        is_paid = p_status in ("paid", "success", "rewarded", "completed")
         tot_amount = Decimal(str(data.get("total_amount") or 0))
 
         result = await client.create_invoice(
@@ -194,10 +212,10 @@ async def trigger_booking_invoice(
             currency_code="KWD",
             notes=notes,
             lines=lines,
-            is_paid=is_paid,
-            payment_status=p_status or "pending",
-            amount_paid=tot_amount if is_paid else Decimal("0"),
-            payment_id=str(data.get("payment_id") or "") if is_paid else "",
+            is_paid=True,
+            payment_status=p_status or "success",
+            amount_paid=tot_amount,
+            payment_id=str(data.get("payment_id") or ""),
         )
         await _link_invoice_to_payments("booking", booking_id, result)
         logger.info(

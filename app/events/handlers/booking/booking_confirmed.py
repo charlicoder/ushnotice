@@ -426,19 +426,19 @@ class BookingConfirmedHandler:
         #   b) event-level payment_status in ("success", "paid", "completed", "successful"), OR
         #   c) payment_data.status in ("success", "paid", "completed", "successful"), OR
         #   d) payment_id present
-        _event_payment_status: str = str(data.get("payment_status") or "").lower()
-        _pdata_status: str = str(payment_data.get("status") or "").lower()
-        is_paid: bool = (
+        # Detect pending-payment scenario: booking confirmed but customer hasn't paid yet
+        payment_status: str = str(data.get("payment_status") or "").strip().lower()
+        payment_is_pending: bool = payment_status in ("pending", "not_initiated", "unpaid")
+        _event_payment_status: str = payment_status
+        _pdata_status: str = str(payment_data.get("status") or "").strip().lower()
+
+        # Payment records and invoices must ONLY be created when payment_status=success
+        is_paid: bool = not payment_is_pending and (
             payment_data.get("is_paid") is True
             or payment_data.get("is_paid") == "true"
             or _event_payment_status in ("success", "paid", "completed", "successful", "rewarded")
             or _pdata_status in ("success", "paid", "completed", "successful")
-            or bool(data.get("payment_id"))
         )
-
-        # Detect pending-payment scenario: booking confirmed but customer hasn't paid yet
-        payment_status: str = str(data.get("payment_status") or "").lower()
-        payment_is_pending: bool = payment_status == "pending"
 
         whatsapp_verified: bool = bool(data.get("whatsapp_verified") or data.get("is_whatsapp_verified"))
         email_verified: bool = bool(data.get("email_verified") or data.get("is_email_verified"))
@@ -1060,15 +1060,14 @@ class BookingConfirmedHandler:
             )
 
 
-        # ── 4. Create invoice in ushanr (non-blocking) ────────────────────────
-        # Create invoice record with status=posted for booking ONLY when payment_status != 'pending' (when payment is successful)
+        # Create invoice record for booking ONLY when payment_status=success (is_paid=True)
         # Note: Gift voucher redemptions do NOT create an invoice (voucher was invoiced at purchase)
         is_voucher_redemption = (
             str(data.get("payment_type") or "").strip().lower() == "gift_voucher"
             or bool(data.get("voucher_id"))
             or str(data.get("payment_method") or "").strip().lower() in ("voucher", "gift_voucher")
         )
-        if booking_id and not payment_is_pending and not is_voucher_redemption:
+        if booking_id and is_paid and not is_voucher_redemption:
             await trigger_booking_invoice(data, correlation_id=correlation_id)
         elif is_voucher_redemption:
             logger.info(
@@ -1076,11 +1075,12 @@ class BookingConfirmedHandler:
                 booking_id=booking_id,
                 message="Invoice creation skipped because booking is redeemed via gift voucher (already invoiced at purchase).",
             )
-        elif booking_id and payment_is_pending:
+        elif booking_id and not is_paid:
             logger.info(
-                "booking_invoice_skipped_payment_pending",
+                "booking_invoice_skipped_payment_not_success",
                 booking_id=booking_id,
-                message="Invoice creation skipped because payment_status=pending. Invoice will be created when payment_status=success.",
+                payment_status=payment_status,
+                message="Invoice creation skipped because payment_status is not success. Invoice will be created when payment_status=success.",
             )
 
         # SMS/WhatsApp messages sent ONLY when payment_status=success and sent ONCE per booking.
