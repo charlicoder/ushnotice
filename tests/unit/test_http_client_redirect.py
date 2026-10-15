@@ -34,3 +34,16 @@ async def test_post_follows_http_to_https_redirect_preserving_method_and_body(mo
     assert seen[1][2] == seen[0][2] != b""
     # base URL upgraded so subsequent calls don't redirect again
     assert client._base_url == "https://gw.example.com"
+
+
+def test_build_headers_includes_x_forwarded_proto(monkeypatch):
+    monkeypatch.setattr("app.integrations.http_client.get_ushspa_token", lambda: "sec-token")
+    client = GatewayHttpClient(
+        base_url="http://ushspa-kong:8000", service_path="/uauth", service_name="ushauth"
+    )
+    headers = client._build_headers()
+    assert headers["X-Forwarded-Proto"] == "https"
+    assert headers["USHSPA-TOKEN"] == "sec-token"
+    assert headers["X-USHSPA-TOKEN"] == "sec-token"
+    assert headers["X-Service"] == "ushnotice"
+

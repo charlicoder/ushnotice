@@ -75,13 +75,20 @@ class GatewayHttpClient:
         correlation_id: str | None = None,
     ) -> dict[str, str]:
         """Build headers including auth token and tracing IDs."""
+        token = get_ushspa_token()
         return {
-            "USHSPA-TOKEN": get_ushspa_token(),
+            "USHSPA-TOKEN": token,
+            "X-USHSPA-TOKEN": token,
             "Content-Type": "application/json",
             "Accept": "application/json",
             "X-Request-ID": request_id or str(uuid.uuid4()),
             "X-Correlation-ID": correlation_id or "",
             "X-Service": "ushnotice",
+            # Tell ushauth's Django SecurityMiddleware that this inter-service request
+            # arrived over a secure channel (TLS is terminated at the load balancer).
+            # Without this header, ushauth's SECURE_SSL_REDIRECT=True returns a 301
+            # redirect to https:// for every plain HTTP inter-container call.
+            "X-Forwarded-Proto": "https",
         }
 
     async def get(
