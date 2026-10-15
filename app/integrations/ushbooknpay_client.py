@@ -73,8 +73,26 @@ class UshBookNPayClient:
             correlation_id=correlation_id,
         )
 
+    async def cancel_payment_link(
+        self,
+        *,
+        booking_id: str,
+        target_type: str = "booking",
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Cancel payment links for a target with gateway (e.g. MyFatoorah) and delete/cancel records.
 
-
+        Calls POST /api/v1/payment-links/cancel-by-target/
+        """
+        payload = {
+            "target_type": target_type,
+            "target_id": str(booking_id),
+        }
+        return await self._client.post(
+            "/api/v1/payment-links/cancel-by-target/",
+            json=payload,
+            correlation_id=correlation_id,
+        )
 
     async def get_booking(
         self,

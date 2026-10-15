@@ -218,6 +218,23 @@ class UshAuthClient:
             correlation_id=correlation_id,
         )
 
+    async def delete_appointment_cache_by_booking_id(
+        self,
+        *,
+        booking_id: str,
+        correlation_id: str | None = None,
+    ) -> dict:
+        """Delete appointment cache records for a booking.
+
+        Calls POST /api/v1/delete-appointment-cache-by-booking-id/
+        """
+        payload = {"booking_id": booking_id}
+        return await self._client.post(
+            "/api/v1/delete-appointment-cache-by-booking-id/",
+            json=payload,
+            correlation_id=correlation_id,
+        )
+
     async def update_appointment_cache_by_booking_id(
         self,
         *,

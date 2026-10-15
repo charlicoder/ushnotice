@@ -581,8 +581,8 @@ async def test_booking_cancelled_handler_updates_appointment_cache_in_ushauth():
 
 
 @pytest.mark.asyncio
-async def test_booking_cancelled_handler_updates_appointment_cache_pending_payment_to_cancelled():
-    """Verify that BookingCancelledHandler sets appointment cache payment_status to cancelled when payment was pending."""
+async def test_booking_cancelled_handler_deletes_appointment_cache_for_confirmed_pending_without_link():
+    """Verify that BookingCancelledHandler deletes appointment cache when status=confirmed and payment_status=pending and paymentlink not created."""
     from unittest.mock import patch
     from app.events.handlers.booking.booking_cancelled import BookingCancelledHandler
     from app.events.handlers.base import HandlerContext
@@ -592,8 +592,10 @@ async def test_booking_cancelled_handler_updates_appointment_cache_pending_payme
     data = {
         "booking_id": "6f4acd1a-9a5d-4cce-8adc-0dd3ef8ef91f",
         "customer_id": "b92c374d-fdb5-48ff-96d5-bb4dc2abc452",
+        "old_status": "confirmed",
         "status": "cancelled",
         "payment_status": "pending",
+        "payment_url": None,
         "is_eligible_for_loyalty": False,
     }
     envelope = EventEnvelope(
@@ -607,12 +609,13 @@ async def test_booking_cancelled_handler_updates_appointment_cache_pending_payme
     mock_ctx = MagicMock(spec=HandlerContext)
 
     mock_ushauth = AsyncMock()
-    mock_ushauth.update_appointment_cache_status_by_booking_id = AsyncMock(
-        return_value={"success": True, "records_updated": 1}
+    mock_ushauth.delete_appointment_cache_by_booking_id = AsyncMock(
+        return_value={"success": True, "deleted_count": 1}
     )
     mock_ushauth.aclose = AsyncMock()
 
     mock_booknpay = AsyncMock()
+    mock_booknpay.cancel_payment_link = AsyncMock()
     mock_booknpay.update_booking_status = AsyncMock(return_value={"success": True})
     mock_booknpay.aclose = AsyncMock()
 
@@ -620,13 +623,67 @@ async def test_booking_cancelled_handler_updates_appointment_cache_pending_payme
          patch("app.events.handlers.booking.booking_cancelled.UshBookNPayClient", return_value=mock_booknpay):
         await handler.handle(envelope, mock_ctx)
 
-    mock_ushauth.update_appointment_cache_status_by_booking_id.assert_awaited_once_with(
+    mock_ushauth.delete_appointment_cache_by_booking_id.assert_awaited_once_with(
         booking_id="6f4acd1a-9a5d-4cce-8adc-0dd3ef8ef91f",
-        new_status="cancelled",
-        payment_status="cancelled",
         correlation_id=envelope.correlation_id_str,
     )
     mock_ushauth.aclose.assert_awaited_once()
+    mock_booknpay.cancel_payment_link.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_booking_cancelled_handler_cancels_link_and_deletes_cache_for_confirmed_pending_with_link():
+    """Verify that BookingCancelledHandler cancels payment link and deletes appointment cache when status=confirmed, payment_status=pending, and payment_url is not null."""
+    from unittest.mock import patch
+    from app.events.handlers.booking.booking_cancelled import BookingCancelledHandler
+    from app.events.handlers.base import HandlerContext
+    from app.events.schemas.envelope import EventEnvelope
+
+    handler = BookingCancelledHandler()
+    data = {
+        "booking_id": "6f4acd1a-9a5d-4cce-8adc-0dd3ef8ef91f",
+        "customer_id": "b92c374d-fdb5-48ff-96d5-bb4dc2abc452",
+        "old_status": "confirmed",
+        "status": "cancelled",
+        "payment_status": "pending",
+        "payment_url": "https://myfatoorah.com/pay/testlink123",
+        "is_eligible_for_loyalty": False,
+    }
+    envelope = EventEnvelope(
+        event_id=uuid.uuid4(),
+        event_type="booking.cancelled",
+        version=1,
+        occurred_at=datetime.now(tz=timezone.utc),
+        source="ushbooknpay",
+        data=data,
+    )
+    mock_ctx = MagicMock(spec=HandlerContext)
+
+    mock_ushauth = AsyncMock()
+    mock_ushauth.delete_appointment_cache_by_booking_id = AsyncMock(
+        return_value={"success": True, "deleted_count": 1}
+    )
+    mock_ushauth.aclose = AsyncMock()
+
+    mock_booknpay = AsyncMock()
+    mock_booknpay.cancel_payment_link = AsyncMock(return_value={"success": True, "cancelled_count": 1})
+    mock_booknpay.update_booking_status = AsyncMock(return_value={"success": True})
+    mock_booknpay.aclose = AsyncMock()
+
+    with patch("app.events.handlers.booking.booking_cancelled.UshAuthClient", return_value=mock_ushauth), \
+         patch("app.events.handlers.booking.booking_cancelled.UshBookNPayClient", return_value=mock_booknpay):
+        await handler.handle(envelope, mock_ctx)
+
+    mock_booknpay.cancel_payment_link.assert_awaited_once_with(
+        booking_id="6f4acd1a-9a5d-4cce-8adc-0dd3ef8ef91f",
+        correlation_id=envelope.correlation_id_str,
+    )
+    mock_ushauth.delete_appointment_cache_by_booking_id.assert_awaited_once_with(
+        booking_id="6f4acd1a-9a5d-4cce-8adc-0dd3ef8ef91f",
+        correlation_id=envelope.correlation_id_str,
+    )
+    mock_ushauth.aclose.assert_awaited_once()
+    mock_booknpay.aclose.assert_awaited()
 
 
 @pytest.mark.asyncio

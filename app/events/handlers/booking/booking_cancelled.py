@@ -117,42 +117,123 @@ class BookingCancelledHandler:
                 has_customer=bool(customer_id),
             )
 
-        # ── 2. Update appointment cache in ushauth ───────────────────────────
+        # ── 2. Cancel payment link & delete/update appointment cache ──────────
         if booking_id:
-            raw_payment_status = str(data.get("payment_status") or "").lower()
-            if data.get("refund_issued") or raw_payment_status in ("success", "paid", "refunded"):
-                new_payment_status = "refunded"
-            elif raw_payment_status in ("pending", "unpaid", "not_initiated", "cancelled", "payment_pending"):
-                new_payment_status = "cancelled"
-            elif raw_payment_status:
-                new_payment_status = raw_payment_status
-            else:
-                new_payment_status = "cancelled"
+            old_status = str(data.get("old_status") or data.get("previous_status") or "").lower().strip()
+            cur_status = str(data.get("status") or "").lower().strip()
+            old_pay_status = str(data.get("old_payment_status") or data.get("previous_payment_status") or "").lower().strip()
+            raw_payment_status = str(data.get("payment_status") or "").lower().strip()
+            payment_url = data.get("payment_url")
+            has_payment_link = bool(payment_url and str(payment_url).strip())
 
-            ushauth_client = UshAuthClient()
-            try:
-                resp = await ushauth_client.update_appointment_cache_status_by_booking_id(
-                    booking_id=booking_id,
-                    new_status="cancelled",
-                    payment_status=new_payment_status,
-                    correlation_id=correlation_id,
-                )
-                logger.info(
-                    "appointment_cache_status_updated_on_cancellation",
-                    booking_id=booking_id,
-                    new_status="cancelled",
-                    payment_status=new_payment_status,
-                    records_updated=resp.get("records_updated", 0) if isinstance(resp, dict) else 0,
-                    correlation_id=correlation_id,
-                )
-            except ServiceClientError as exc:
-                if exc.status_code == 404:
-                    logger.warning(
-                        "appointment_cache_not_found_on_cancellation",
+            is_paid_or_refunded = (
+                bool(data.get("refund_issued"))
+                or raw_payment_status in ("success", "paid", "refunded")
+                or old_pay_status in ("success", "paid", "refunded")
+            )
+            is_confirmed = (
+                old_status == "confirmed"
+                or cur_status == "confirmed"
+                or (not old_status and not is_paid_or_refunded)
+            )
+            is_pending_payment = (
+                old_pay_status in ("pending", "unpaid")
+                or raw_payment_status in ("pending", "unpaid", "cancelled", "payment_pending")
+            ) and not is_paid_or_refunded
+
+            is_confirmed_pending = is_confirmed and is_pending_payment
+
+            if is_confirmed_pending:
+                # ── (i) If payment link created (payment_url not null), send paymentlink cancel request
+                if has_payment_link:
+                    booknpay_client = UshBookNPayClient()
+                    try:
+                        await booknpay_client.cancel_payment_link(
+                            booking_id=booking_id,
+                            correlation_id=correlation_id,
+                        )
+                        logger.info(
+                            "booking_cancelled_payment_link_cancelled",
+                            booking_id=booking_id,
+                            payment_url=payment_url,
+                            correlation_id=correlation_id,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "booking_cancelled_payment_link_cancel_failed",
+                            booking_id=booking_id,
+                            error=str(exc),
+                            correlation_id=correlation_id,
+                        )
+                    finally:
+                        await booknpay_client.aclose()
+
+                # ── (i & ii) Send request to delete appointment_cache for this booking
+                ushauth_client = UshAuthClient()
+                try:
+                    del_resp = await ushauth_client.delete_appointment_cache_by_booking_id(
                         booking_id=booking_id,
                         correlation_id=correlation_id,
                     )
+                    logger.info(
+                        "appointment_cache_deleted_on_booking_cancellation",
+                        booking_id=booking_id,
+                        deleted_count=del_resp.get("deleted_count", 0) if isinstance(del_resp, dict) else 0,
+                        correlation_id=correlation_id,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "appointment_cache_delete_failed_on_booking_cancellation",
+                        booking_id=booking_id,
+                        error=str(exc),
+                        correlation_id=correlation_id,
+                    )
+                finally:
+                    await ushauth_client.aclose()
+
+                new_payment_status = "cancelled"
+            else:
+                if data.get("refund_issued") or raw_payment_status in ("success", "paid", "refunded"):
+                    new_payment_status = "refunded"
+                elif raw_payment_status in ("pending", "unpaid", "not_initiated", "cancelled", "payment_pending"):
+                    new_payment_status = "cancelled"
+                elif raw_payment_status:
+                    new_payment_status = raw_payment_status
                 else:
+                    new_payment_status = "cancelled"
+
+                ushauth_client = UshAuthClient()
+                try:
+                    resp = await ushauth_client.update_appointment_cache_status_by_booking_id(
+                        booking_id=booking_id,
+                        new_status="cancelled",
+                        payment_status=new_payment_status,
+                        correlation_id=correlation_id,
+                    )
+                    logger.info(
+                        "appointment_cache_status_updated_on_cancellation",
+                        booking_id=booking_id,
+                        new_status="cancelled",
+                        payment_status=new_payment_status,
+                        records_updated=resp.get("records_updated", 0) if isinstance(resp, dict) else 0,
+                        correlation_id=correlation_id,
+                    )
+                except ServiceClientError as exc:
+                    if exc.status_code == 404:
+                        logger.warning(
+                            "appointment_cache_not_found_on_cancellation",
+                            booking_id=booking_id,
+                            correlation_id=correlation_id,
+                        )
+                    else:
+                        logger.error(
+                            "appointment_cache_update_failed_on_cancellation",
+                            booking_id=booking_id,
+                            error=str(exc),
+                            correlation_id=correlation_id,
+                        )
+                        raise
+                except Exception as exc:
                     logger.error(
                         "appointment_cache_update_failed_on_cancellation",
                         booking_id=booking_id,
@@ -160,16 +241,8 @@ class BookingCancelledHandler:
                         correlation_id=correlation_id,
                     )
                     raise
-            except Exception as exc:
-                logger.error(
-                    "appointment_cache_update_failed_on_cancellation",
-                    booking_id=booking_id,
-                    error=str(exc),
-                    correlation_id=correlation_id,
-                )
-                raise
-            finally:
-                await ushauth_client.aclose()
+                finally:
+                    await ushauth_client.aclose()
 
         # ── 3. Update booking payment status in ushbooknpay ───────────────────
         if booking_id:
