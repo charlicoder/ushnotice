@@ -16,6 +16,7 @@ from __future__ import annotations
 import time
 import uuid
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 
@@ -28,6 +29,11 @@ logger = get_logger(__name__)
 
 # HTTP status codes that are safe to retry
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+# Redirects we follow ourselves so the HTTP method and JSON body are preserved
+# (httpx would turn a POST into a GET on 301/302).
+_REDIRECT_STATUS = frozenset({301, 302, 307, 308})
+_MAX_REDIRECTS = 3
 
 
 class GatewayHttpClient:
@@ -143,6 +149,7 @@ class GatewayHttpClient:
         url = self._build_url(path)
         headers = self._build_headers(request_id=request_id, correlation_id=correlation_id)
         last_exc: Exception | None = None
+        redirects = 0
 
         for attempt in range(1, self._max_retries + 1):
             start = time.monotonic()
@@ -154,6 +161,37 @@ class GatewayHttpClient:
                     params=params,
                     json=json,
                 )
+
+                # Follow redirects ourselves, keeping method + body.
+                while (
+                    response.status_code in _REDIRECT_STATUS
+                    and response.headers.get("location")
+                    and redirects < _MAX_REDIRECTS
+                ):
+                    redirects += 1
+                    target = urljoin(url, response.headers["location"])
+                    logger.warning(
+                        "Gateway request redirected — check API_GATEWAY_BASE_URL (use https) "
+                        "and proxy X-Forwarded-Proto",
+                        service=self._service_name,
+                        method=method,
+                        path=path,
+                        status_code=response.status_code,
+                        from_url=url,
+                        to_url=target,
+                    )
+                    # If only scheme/host changed, adopt it so later calls skip the redirect.
+                    old, new = urlsplit(url), urlsplit(target)
+                    if old.path == new.path and (old.scheme, old.netloc) != (new.scheme, new.netloc):
+                        self._base_url = f"{new.scheme}://{new.netloc}"
+                    url = target
+                    response = await self._client.request(
+                        method,
+                        url,
+                        headers=headers,
+                        params=None,
+                        json=json,
+                    )
                 elapsed_ms = int((time.monotonic() - start) * 1000)
 
                 logger.info(
