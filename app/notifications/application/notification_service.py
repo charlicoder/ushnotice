@@ -185,12 +185,15 @@ class NotificationService:
         # 2. Render Template
         is_html = (channel == NotificationChannel.EMAIL)
         try:
-            rendered_body = self._ctx.renderer.render(
-                req.template_name,
-                lang=req.recipient.language,
-                context=req.template_context,
-                is_html=is_html,
-            )
+            if req.template_name in ("raw", "direct", "sms/direct") and "raw_body" in req.template_context:
+                rendered_body = str(req.template_context["raw_body"])
+            else:
+                rendered_body = self._ctx.renderer.render(
+                    req.template_name,
+                    lang=req.recipient.language,
+                    context=req.template_context,
+                    is_html=is_html,
+                )
         except Exception as exc:
             logger.exception(
                 "Template rendering failed",

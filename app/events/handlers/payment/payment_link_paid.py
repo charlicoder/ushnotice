@@ -89,11 +89,13 @@ class PaymentLinkPaidHandler:
         # ── 2. Update invoice status = paid in ushanr ─────────────────────────
         ushanr_client = UshanrClient()
         try:
+            booking_number = booking_data.get("booking_number") or data.get("booking_number") or data.get("target_ref")
             await ushanr_client.mark_invoice_paid(
                 invoice_id=data.get("invoice_id"),
                 invoice_name=data.get("invoice_number") or booking_data.get("invoice_number"),
                 source_document_type="booking",
                 source_document_id=booking_id,
+                source_document_ref=booking_number,
                 amount_paid=data.get("amount") or booking_data.get("total_amount"),
                 payment_id=data.get("gateway_payment_id") or data.get("payment_link_id"),
             )

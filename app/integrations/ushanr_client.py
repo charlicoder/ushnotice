@@ -226,6 +226,7 @@ class UshanrClient:
         invoice_name: str | None = None,
         source_document_type: str | None = None,
         source_document_id: str | None = None,
+        source_document_ref: str | None = None,
         amount_paid: float | Decimal | None = None,
         payment_id: str | None = None,
     ) -> dict[str, Any]:
@@ -238,6 +239,8 @@ class UshanrClient:
         if source_document_type and source_document_id:
             body["source_document_type"] = str(source_document_type)
             body["source_document_id"] = str(source_document_id)
+        if source_document_ref:
+            body["source_document_ref"] = str(source_document_ref)
         if amount_paid is not None:
             body["amount_paid"] = float(amount_paid)
         if payment_id:

@@ -17,6 +17,7 @@ ushbooknpay. They are now delegated here via the SQS ``booking.confirmed`` event
 from __future__ import annotations
 
 from typing import Any
+from dataclasses import replace
 
 from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
@@ -1202,10 +1203,9 @@ class BookingConfirmedHandler:
         if not whatsapp_sent:
             sms_recipient = ChannelResolver.resolve_sms_recipient(data)
             if sms_recipient:
-                if str(sms_recipient.language).strip().lower().startswith("en"):
-                    sms_body = _sms_message(context, sms_recipient.name or customer_name)
-                else:
-                    sms_body = _sms_message_ar(context, sms_recipient.name or customer_name)
+                # Booking confirmation SMS for payment_status=success must be sent in Arabic version
+                sms_recipient = replace(sms_recipient, language="ar")
+                sms_body = _sms_message_ar(context, sms_recipient.name or customer_name)
                 req_sms = NotificationRequest(
                     event_id=envelope.event_id_str,
                     recipient=sms_recipient,
@@ -1214,6 +1214,7 @@ class BookingConfirmedHandler:
                         **context,
                         "customer_name": sms_recipient.name or customer_name,
                         "message_body": sms_body,
+                        "language": "ar",
                     },
                     customer_id=customer_id or None,
                     booking_id=booking_id or None,

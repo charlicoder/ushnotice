@@ -50,8 +50,8 @@ async def test_refund_completed_handler_triggers_credit_note_and_notifications()
 
         await handler.handle(envelope, ctx)
 
-        # Verify notifications sent
-        assert mock_send.await_count >= 1
+        # Verify notifications are disabled for refund_completed
+        assert mock_send.await_count == 0
 
         # Verify trigger_credit_note called with correct arguments
         mock_trigger.assert_awaited_once_with(

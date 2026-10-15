@@ -251,6 +251,25 @@ def build_default_registry() -> HandlerRegistry:
             _alias.event_type = _alias_type
             registry.register(_alias)
 
+    # ── SMS dispatch handlers ────────────────────────────────────────────────
+    from app.events.handlers.sms.send_sms import SendSMSHandler
+
+    for _h in [
+        SendSMSHandler(),
+    ]:
+        registry.register(_h)
+        _alias_type = _h.event_type.replace(".", "_")
+        if _alias_type != _h.event_type:
+            _alias = _h.__class__()
+            _alias.event_type = _alias_type
+            registry.register(_alias)
+
+    for _sms_alias in ("sms.mass_send", "sms_mass_send", "sms.send.requested", "sms_send_requested"):
+        if not registry.has_handler(_sms_alias):
+            _sms_handler = SendSMSHandler()
+            _sms_handler.event_type = _sms_alias
+            registry.register(_sms_handler)
+
     logger.info(
         "Handler registry built",
         event_types=registry.registered_event_types(),

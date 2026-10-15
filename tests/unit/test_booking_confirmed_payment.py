@@ -1012,4 +1012,62 @@ async def test_booking_confirmed_success_payment_creates_invoice_and_payment_rec
     assert len(payment_calls) == 1
 
 
+@pytest.mark.asyncio
+async def test_booking_confirmed_success_payment_sends_sms_in_arabic():
+    """
+    When payment_status=success, the booking confirmation SMS sent to the
+    customer must always be in Arabic even if language preference is English.
+    """
+    from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
+    from app.events.handlers.base import HandlerContext
 
+    handler = BookingConfirmedHandler()
+    data = {
+        **CONFIRMED_BOOKING_DATA,
+        "payment_status": "success",
+        "customer_language": "en",
+        "language_preference": "en",
+        "whatsapp_verified": False,
+        "payment_data": {
+            "status": "paid",
+            "is_paid": True,
+            "invoice_id": "7106603",
+        },
+    }
+    envelope = _make_confirmed_envelope(data)
+    mock_ctx = MagicMock(spec=HandlerContext)
+
+    mock_notification_repo = AsyncMock()
+    mock_notification_repo.has_booking_notification = AsyncMock(return_value=False)
+    mock_ctx.notification_repo = mock_notification_repo
+
+    mock_notification_service = AsyncMock()
+    mock_ushauth_client = AsyncMock()
+    mock_ushauth_client.create_appointment_cache = AsyncMock(return_value={})
+    mock_ushauth_client.aclose = AsyncMock()
+
+    with (
+        patch("app.events.handlers.booking.booking_confirmed.NotificationService",
+              return_value=mock_notification_service),
+        patch("app.events.handlers.booking.booking_confirmed.UshAuthClient",
+              return_value=mock_ushauth_client),
+        patch("app.integrations.ushbooknpay_client.GatewayHttpClient") as mock_gw,
+        patch("app.events.handlers.booking.booking_confirmed.trigger_booking_invoice", new_callable=AsyncMock),
+    ):
+        mock_gw_instance = MagicMock()
+        mock_gw_instance.post = AsyncMock(return_value={})
+        mock_gw_instance.aclose = AsyncMock()
+        mock_gw.return_value = mock_gw_instance
+
+        await handler.handle(envelope, mock_ctx)
+
+    # Find the SMS notification request
+    sms_calls = [
+        call.args[0] for call in mock_notification_service.send.call_args_list
+        if getattr(call.args[0], "template_name", "") == "booking/confirmed_sms"
+    ]
+    assert len(sms_calls) == 1
+    req = sms_calls[0]
+    assert req.recipient.language == "ar"
+    assert "تم تأكيد حجزك" in req.template_context["message_body"]
+    assert req.template_context.get("language") == "ar"
