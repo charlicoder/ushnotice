@@ -987,12 +987,26 @@ class BookingConfirmedHandler:
             or bool(data.get("loyalty_data", {}).get("points_cost"))
             or bool(data.get("loyalty_data", {}).get("reward_id"))
         )
+        # e) payment has actually succeeded (payment_status == success). A booking
+        #    that is confirmed with payment_status=pending (payment link sent but
+        #    not yet paid) must NOT earn points; they are awarded when the
+        #    payment_link.paid event re-enters this handler with success.
+        _loyalty_payment_succeeded: bool = payment_status in (
+            "success", "paid", "completed", "successful",
+        )
         is_eligible_for_loyalty: bool = bool(data.get("is_eligible_for_loyalty"))
         if _is_loyalty_redemption:
             logger.info(
                 "booking_confirmed_loyalty_credit_skipped_loyalty_redemption",
                 booking_id=booking_id,
                 customer_id=customer_id,
+            )
+        elif is_eligible_for_loyalty and not _loyalty_payment_succeeded:
+            logger.info(
+                "booking_confirmed_loyalty_credit_deferred_until_payment",
+                booking_id=booking_id,
+                customer_id=customer_id,
+                payment_status=payment_status,
             )
         elif is_eligible_for_loyalty and booking_id and customer_id:
             _loyalty_points: int = int(data.get("loyalty_points") or 0)
