@@ -304,8 +304,70 @@ class BookingUpdatedHandler:
             await ushauth_client.aclose()
 
         # ── 2. Send SMS / WhatsApp notification to customer ────────────────
-        # If the update changed the status to cancelled, cancellation handler handles it
-        if cache_status == "cancelled":
+        # If the update changed the status to cancelled, cancel payment link if pending and skip notifications
+        if cache_status == "cancelled" or raw_status in ("cancelled", "canceled"):
+            payment_url = (
+                data.get("payment_url")
+                or (data.get("payment_data") or {}).get("payment_url")
+                or (data.get("payments_data") or {}).get("payment_url")
+                or data.get("invoice_url")
+            )
+            has_payment_link = bool(
+                payment_url
+                and str(payment_url).strip()
+                and str(payment_url).strip().lower() not in ("none", "null")
+            )
+            old_pay_status = str(data.get("old_payment_status") or data.get("previous_payment_status") or "").lower().strip()
+            is_paid_booking = (
+                bool(data.get("refund_required"))
+                or bool(data.get("refund_issued"))
+                or raw_payment_status in ("success", "paid")
+                or old_pay_status in ("success", "paid")
+            )
+            is_pending_payment = (
+                old_pay_status in ("pending", "unpaid")
+                or raw_payment_status in ("pending", "unpaid", "cancelled", "payment_pending")
+            ) and not is_paid_booking
+
+            if not has_payment_link and is_pending_payment and booking_id:
+                try:
+                    b_client = UshBookNPayClient()
+                    b_resp = await b_client.get_booking(booking_id, correlation_id=correlation_id)
+                    await b_client.aclose()
+                    b_data = b_resp.get("data") if isinstance(b_resp, dict) and "data" in b_resp else b_resp
+                    if isinstance(b_data, dict):
+                        fetched_url = (
+                            b_data.get("payment_url")
+                            or (b_data.get("payment_data") or {}).get("payment_url")
+                            or b_data.get("invoice_url")
+                        )
+                        if fetched_url and str(fetched_url).strip() and str(fetched_url).strip().lower() not in ("none", "null"):
+                            has_payment_link = True
+                except Exception as exc:
+                    logger.debug("booking_updated_check_payment_url_failed", booking_id=booking_id, error=str(exc))
+
+            if is_pending_payment and has_payment_link and booking_id:
+                booknpay_client = UshBookNPayClient()
+                try:
+                    await booknpay_client.cancel_payment_link(
+                        booking_id=booking_id,
+                        correlation_id=correlation_id,
+                    )
+                    logger.info(
+                        "booking_updated_cancelled_payment_link_cancelled",
+                        booking_id=booking_id,
+                        correlation_id=correlation_id,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "booking_updated_cancelled_payment_link_cancel_failed",
+                        booking_id=booking_id,
+                        error=str(exc),
+                        correlation_id=correlation_id,
+                    )
+                finally:
+                    await booknpay_client.aclose()
+
             logger.info("booking_updated_notification_skipped_cancelled", booking_id=booking_id)
             return
 

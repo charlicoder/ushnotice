@@ -65,4 +65,5 @@ async def test_refund_completed_handler_triggers_credit_note_and_notifications()
             refund_number="REF/2026/10/000001",
             branch_id=None,
             processed_by="staff-456",
+            record_refund_payment=True,
         )

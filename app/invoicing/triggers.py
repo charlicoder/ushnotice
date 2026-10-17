@@ -475,18 +475,28 @@ async def trigger_credit_note(
     refund_number: str | None = None,
     branch_id: str | None = None,
     processed_by: str | None = None,
-) -> None:
+    record_refund_payment: bool = False,
+) -> dict[str, Any] | None:
     """
     Create a credit note in ushanr reversing the invoice for the given source document.
 
     Called on booking cancellations and payment refunds.
+
+    Args:
+        record_refund_payment: When False (default, cancellation path), only the
+            credit note (revenue reversal) is created — no cash movement is
+            posted because the refund hasn't been settled yet.
+            When True (refund_completed path), ushanr also posts the outbound
+            refund payment that records the actual cash leaving the account.
+
     Non-blocking: any error is logged as a warning and swallowed.
+    Returns the ushanr response dict on success, or None on failure.
     """
     if not _invoicing_enabled():
-        return
+        return None
 
     if not source_document_id:
-        return
+        return None
 
     company_id, journal_id, _ = _get_ids()
 
@@ -505,6 +515,7 @@ async def trigger_credit_note(
             refund_number=refund_number,
             branch_id=branch_id,
             processed_by=processed_by,
+            record_refund_payment=record_refund_payment,
         )
         logger.info(
             "credit_note_created",
@@ -512,8 +523,10 @@ async def trigger_credit_note(
             credit_note_name=result.get("invoice_name"),
             source_type=source_document_type,
             source_id=source_document_id,
+            record_refund_payment=record_refund_payment,
             correlation_id=correlation_id,
         )
+        return result
     except Exception as exc:
         logger.warning(
             "credit_note_failed",
@@ -522,5 +535,6 @@ async def trigger_credit_note(
             error=str(exc),
             correlation_id=correlation_id,
         )
+        return None
     finally:
         await client.aclose()

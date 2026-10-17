@@ -262,9 +262,15 @@ class UshanrClient:
         refund_number: str | None = None,
         branch_id: str | None = None,
         processed_by: str | None = None,
+        record_refund_payment: bool = False,
     ) -> dict[str, Any]:
         """
         Create a credit note reversing the invoice for a source document.
+
+        Args:
+            record_refund_payment: When False (default), only the credit note
+                (revenue reversal) is created. When True, ushanr also posts the
+                outbound refund payment that records actual cash leaving the account.
 
         Returns the response dict with invoice_id, invoice_name, state, amount_total.
         """
@@ -294,6 +300,8 @@ class UshanrClient:
             body["branch_id"] = str(branch_id)
         if processed_by:
             body["processed_by"] = str(processed_by)
+        if record_refund_payment:
+            body["record_refund_payment"] = True
 
         return await self._post("/api/v1/internal/invoices/credit-note/", body)
 

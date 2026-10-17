@@ -594,6 +594,93 @@ class UshBookNPayClient:
             correlation_id=correlation_id,
         )
 
+    async def link_refund_credit_note(
+        self,
+        *,
+        refund_id: str | None = None,
+        booking_id: str | None = None,
+        refund_number: str | None = None,
+        credit_note_number: str | None = None,
+        credit_note_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Link a credit note (from ushanr) to a refund record in ushbooknpay.
+
+        The endpoint is idempotent — calling it twice with the same credit_note_number
+        on the same refund is a no-op.
+
+        At least one of refund_id, refund_number, or booking_id is required.
+        """
+        payload: dict[str, Any] = {}
+        if credit_note_number:
+            payload["credit_note_number"] = credit_note_number
+        if credit_note_id:
+            payload["credit_note_id"] = credit_note_id
+        if booking_id:
+            payload["booking_id"] = booking_id
+        if refund_number:
+            payload["refund_number"] = refund_number
+
+        if refund_id:
+            url = f"/api/v1/refunds/{refund_id}/credit-note/"
+        elif refund_number:
+            url = "/api/v1/refunds/credit-note/"
+        elif booking_id:
+            url = "/api/v1/refunds/credit-note/"
+        else:
+            return None
+
+        return await self._client.patch(
+            url,
+            json=payload,
+            correlation_id=correlation_id,
+        )
+
+    async def create_refund_request(
+        self,
+        *,
+        booking_id: str,
+        payment_id: str | None = None,
+        invoice_id: str | None = None,
+        invoice_number: str | None = None,
+        refund_amount: float | str | None = None,
+        cancellation_fee: float | str | None = None,
+        reason: str | None = None,
+        notes: str | None = None,
+        change_by_user: str | None = None,
+        change_by_user_data: dict[str, Any] | None = None,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a refund request record in ushbooknpay (status=requested)."""
+        payload: dict[str, Any] = {
+            "booking_id": booking_id,
+        }
+        if payment_id:
+            payload["payment_id"] = payment_id
+        if invoice_id:
+            payload["invoice_id"] = invoice_id
+        if invoice_number:
+            payload["invoice_number"] = invoice_number
+        if refund_amount is not None:
+            payload["refund_amount"] = str(refund_amount)
+        if cancellation_fee is not None:
+            payload["cancellation_fee"] = str(cancellation_fee)
+        if reason:
+            payload["reason"] = reason
+        if notes:
+            payload["notes"] = notes
+        if change_by_user:
+            payload["change_by_user"] = change_by_user
+        if change_by_user_data:
+            payload["change_by_user_data"] = change_by_user_data
+
+        return await self._client.post(
+            f"/api/v1/bookings/{booking_id}/refunds/request/",
+            json=payload,
+            correlation_id=correlation_id,
+        )
+
     async def aclose(self) -> None:
 
         await self._client.aclose()
+

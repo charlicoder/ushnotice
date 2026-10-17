@@ -153,6 +153,7 @@ def build_default_registry() -> HandlerRegistry:
     from app.events.handlers.booking.booking_payment_status_success import BookingPaymentStatusSuccessHandler
     from app.events.handlers.booking.booking_updated import BookingUpdatedHandler
     from app.events.handlers.booking.refund_completed import RefundCompletedHandler
+    from app.events.handlers.booking.refund_approved import RefundApprovedHandler
 
     for _h in [
         BookingCancelledHandler(),
@@ -164,6 +165,7 @@ def build_default_registry() -> HandlerRegistry:
         BookingPaymentStatusSuccessHandler(),
         BookingUpdatedHandler(),
         RefundCompletedHandler(),
+        RefundApprovedHandler(),
     ]:
         registry.register(_h)
         _alias_type = _h.event_type.replace(".", "_")
@@ -172,12 +174,25 @@ def build_default_registry() -> HandlerRegistry:
             _alias.event_type = _alias_type
             registry.register(_alias)
 
-    # Register BookingUpdatedHandler for booking.rescheduled events as well
-    for _resched_key in ("booking.rescheduled", "booking_rescheduled"):
-        if not registry.has_handler(_resched_key):
-            _r_handler = BookingUpdatedHandler()
-            _r_handler.event_type = _resched_key
-            registry.register(_r_handler)
+    # Register RefundApprovedHandler for booking.refund_approved aliases as well
+    for _extra_refund_key in ("booking.refund_approved", "booking_refund_approved"):
+        if not registry.has_handler(_extra_refund_key):
+            _extra_refund_handler = RefundApprovedHandler()
+            _extra_refund_handler.event_type = _extra_refund_key
+            registry.register(_extra_refund_handler)
+
+    # Register BookingUpdatedHandler for booking.rescheduled and booking.status_updated events as well
+    for _extra_key in (
+        "booking.rescheduled",
+        "booking_rescheduled",
+        "booking.status_updated",
+        "booking_status_updated",
+    ):
+        if not registry.has_handler(_extra_key):
+            _extra_handler = BookingUpdatedHandler()
+            _extra_handler.event_type = _extra_key
+            registry.register(_extra_handler)
+
 
     # ── Payment handlers ──────────────────────────────────────────────────────
     from app.events.handlers.payment.payment_success import PaymentSuccessHandler
