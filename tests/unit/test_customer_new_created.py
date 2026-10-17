@@ -205,7 +205,7 @@ def test_customer_new_created_template_renders_without_password():
         lang="en",
         context={"customer_name": "Sarah", "password": ""},
     )
-    assert "Download our app and set your password:" in body_en
+    assert "Download the USH Spa app and log in using your mobile number to get started:" in body_en
     assert "Your password is:" not in body_en
 
     body_ar = renderer.render(
@@ -213,7 +213,7 @@ def test_customer_new_created_template_renders_without_password():
         lang="ar",
         context={"customer_name": "سارة", "password": ""},
     )
-    assert "حمّل تطبيقنا وعيّن كلمة المرور الخاصة بك:" in body_ar
+    assert "حمّل تطبيق USH Spa وسجّل الدخول باستخدام رقم هاتفك للبدء:" in body_ar
     assert "تم إنشاء حسابك بنجاح. كلمة المرور" not in body_ar
 
 
