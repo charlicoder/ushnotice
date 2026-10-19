@@ -1,16 +1,9 @@
-{% if message_body and not ('Hi ' in message_body or 'you received a gift' in message_body or 'Message say' in message_body) %}{{ message_body }}{% else %}USHSPA:
+{% if message_body and not ('Hi ' in message_body or 'you received a gift' in message_body or 'Message say' in message_body) %}{{ message_body }}{% else %}Ush Spa (أوش سبا):
 
-مرحباً {{ recipient_name | default('عميلنا') }}، لقد استلمت هدية من {{ gift_from if gift_from else (sender_name if sender_name else 'شخص مميز') }}!
-نص الرسالة:
-{{ gift_message if gift_message else "عيد ميلاد سعيد" }} 🎈 🙏🏻
-
-اضغط على الرابط أدناه لاستلام هديتك:
-
+مرحباً {{ recipient_name | default('عميلتنا العزيزة') }}، يسرّنا إعلامكِ بأن {{ gift_from if gift_from else (sender_name if sender_name else 'شخص مميز') }} قد أهدى لكِ تجربة استرخاء فاخرة 🌸
+{% if gift_message %}رسالة الإهداء: {{ gift_message }} 🎈
+{% endif %}
+استعراض تفاصيل الهدية وطريقة الاستخدام:
 {{ gift_card_url }}
-{% if recipient_password %}
-كلمة المرور المؤقتة: {{ recipient_password }}
-{% elif is_new_user %}
-تم إنشاء حساب جديد لك. حمّل تطبيقنا وعيّن كلمة المرور الخاصة بك:
-{{ app_install_url if app_install_url else 'https://apps.apple.com/kw/app/ushspa/id6771279814' }}
-{% endif %}
-{% endif %}
+{% if recipient_password %}كلمة المرور المؤقتة: {{ recipient_password }}
+{% endif %}{% endif %}

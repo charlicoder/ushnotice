@@ -1,25 +1,26 @@
-{% if message_body and not ('Dear ' in message_body or 'exclusive spa gift' in message_body or 'Booking Confirmed' in message_body) %}{{ message_body }}{% else %}🎁 *لقد استلمت هدية!* — USHSPA
+{% if message_body and not ('Dear ' in message_body or 'exclusive spa gift' in message_body or 'Booking Confirmed' in message_body) %}{{ message_body }}{% else %}🌸 *إهداء خاص وتجربة استرخاء فاخرة من Ush Spa* 🌸
 
-عزيزي {{ recipient_name | default('العميل العزيز') }}،
+مرحباً بكِ {{ recipient_name | default('عميلتنا العزيزة') }}،
 
-أرسل لك *{{ sender_name if sender_name else (gift_from if gift_from else 'شخص مميز') }}* هدية سبا حصرية! 💆‍♀️✨
+يسرّنا إعلامكِ بأن *{{ sender_name if sender_name else (gift_from if gift_from else 'شخص مميز') }}* قد أهدى لكِ تجربة عناية واسترخاء مميزة لدى معهد كوايت أوش للسبا التايلاندي 💆‍♀️✨
 
-🧴 *الخدمة:* {{ service_name }}
-📍 *الفرع:* {{ branch_name }}
-{% if total_amount %}💳 *قيمة الهدية:* {{ total_amount }} {{ currency | default('KWD') }}
+{% if service_name %}🧴 *الخدمة المهداة:* {{ service_name }}
+{% endif %}{% if branch_name %}📍 *الفرع:* {{ branch_name }}
 {% endif %}{% if expire_date %}📅 *صالحة حتى:* {{ expire_date }}
 {% endif %}{% if gift_message %}
-💬 *رسالة من {{ sender_name }}:* _{{ gift_message }}_
-{% endif %}
-🔐 *رمزك السري:* {{ secret_code | default('راجع بريدك الإلكتروني') }}
-{% if recipient_password %}
-🔑 *كلمة المرور الخاصة بك:* {{ recipient_password }}
+💌 *رسالة الإهداء:* _{{ gift_message }}_
+{% endif %}{% if secret_code %}
+🔐 *كود القسيمة:* {{ secret_code }}
+{% endif %}{% if recipient_password %}
+🔑 *كلمة المرور المؤقتة:* {{ recipient_password }}
 {% elif is_new_user %}
-✨ *تم إنشاء الحساب:* تم إنشاء حساب جديد لك. حمّل تطبيقنا وعيّن كلمة المرور الخاصة بك.
+✨ *تم تفعيل حساب جديد لكِ:* يمكنكِ تسجيل الدخول عبر تطبيقنا ومتابعة حجوزاتكِ بكل يسر وسهولة.
 {% endif %}
-🌐 *عرض بطاقة الهدية:* {{ gift_card_url }}
+🌐 *استعراض تفاصيل هديتكِ وطريقة الاستخدام:*
+{{ gift_card_url }}
 
-📱 للاستفادة من الهدية، حمّل تطبيق USHSPA وسجّل الدخول بهذا الرقم:
+📱 للاستفادة الكاملة وتأكيد الحجز، يمكنكِ تحميل تطبيق USH Spa:
 {{ app_install_url | default('https://apps.apple.com/kw/app/ushspa/id6771279814') }}
 
-— فريق USHSPA{% endif %}
+نتطلع بكل مودة لاستقبالكِ ونتمنى لكِ أوقاتاً مفعمة بالراحة والسكينة 🌿
+— معهد كوايت أوش للسبا الصحي (Ush Spa){% endif %}

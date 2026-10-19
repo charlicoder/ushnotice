@@ -149,18 +149,41 @@ def _recipient_whatsapp_message_en(ctx: dict) -> str:
 
 
 def _recipient_whatsapp_message_ar(ctx: dict) -> str:
+    recipient_name = ctx.get("recipient_name") or "عميلتنا العزيزة"
+    if recipient_name in ("Valued Customer", "Customer", ""):
+        recipient_name = "عميلتنا العزيزة"
+    sender_name = ctx.get("sender_name") or "شخص مميز"
+
     if ctx.get("recipient_password"):
         pass_part = f"\nكلمة المرور لتسجيل الدخول: {ctx['recipient_password']}"
     elif ctx.get("is_new_user"):
         pass_part = f"\nتم إنشاء حساب جديد لك. حمّل تطبيقنا وعيّن كلمة المرور الخاصة بك:\n{ctx.get('app_install_url') or _APP_INSTALL_URL}"
     else:
         pass_part = ""
-    return (
-        f"🎁 لقد استلمت هدية من {ctx['sender_name']}!\n\n"
-        f"رمز الهدية السري: {ctx['secret_code']}\n"
-        f"تنتهي في: {ctx['expire_date']}{pass_part}\n"
-        f"شاهد هديتك: {ctx['gift_card_url']}"
-    )
+
+    lines = [
+        "🌸 *إهداء خاص وتجربة استرخاء فاخرة من Ush Spa* 🌸",
+        "",
+        f"مرحباً بكِ {recipient_name}،",
+        "",
+        f"يسرّنا إعلامكِ بأن *{sender_name}* قد أهدى لكِ تجربة استرخاء وعناية مميزة لدى معهد كوايت أوش للسبا التايلاندي 💆‍♀️✨",
+        "",
+        f"رمز الهدية السري: {ctx['secret_code']}",
+    ]
+    if ctx.get("expire_date"):
+        lines.append(f"تنتهي في: {ctx['expire_date']}")
+    if ctx.get("gift_message"):
+        lines += ["", f"رسالة الإهداء: _{ctx['gift_message']}_"]
+    if pass_part:
+        lines.append(pass_part)
+    lines += [
+        "",
+        f"شاهد هديتك: {ctx['gift_card_url']}",
+        "",
+        "نتطلع بكل مودة لاستقبالكِ ونتمنى لكِ قضاء أمتع أوقات الراحة والسكينة 🌿",
+        "— معهد كوايت أوش للسبا الصحي (Ush Spa)",
+    ]
+    return "\n".join(lines)
 
 
 class GiftPurchaseCompletedHandler:
@@ -285,11 +308,9 @@ class GiftPurchaseCompletedHandler:
     ) -> None:
         """Send WhatsApp to the gift recipient with secret_code and link."""
         try:
-            lang = "en" if str(gctx.get("recipient_language") or "").strip().lower().startswith("en") else "ar"
-            if lang == "en":
-                wa_body = _recipient_whatsapp_message_en(gctx)
-            else:
-                wa_body = _recipient_whatsapp_message_ar(gctx)
+            # Recipient messages must always be sent in Arabic as requested
+            lang = "ar"
+            wa_body = _recipient_whatsapp_message_ar(gctx)
 
             recipient_payload = {
                 "phone_number": recipient_phone,
