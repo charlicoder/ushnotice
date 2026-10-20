@@ -93,7 +93,8 @@ def build_booking_invoice_lines(data: dict[str, Any]) -> list[dict[str, Any]]:
 
     lines: list[dict[str, Any]] = []
 
-    if payment_type == "rewarded":
+    booking_type = str(data.get("booking_type") or "").lower()
+    if payment_type == "rewarded" or booking_type == "loyalty" or bool(data.get("loyalty_data")):
         # Loyalty redemption — full service value, zero charge
         total = _d(
             data.get("total_amount")
