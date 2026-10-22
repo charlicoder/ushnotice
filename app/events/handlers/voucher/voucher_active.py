@@ -61,8 +61,8 @@ def _fmt_expire(expire_date: str) -> str:
 
 def _build_voucher_context(data: dict) -> dict:
     """Extract and normalise all gift-voucher fields for template rendering."""
-    sender_details: dict = data.get("sender_details") or data.get("sender_data") or {}
-    recipient_details: dict = data.get("recipient_details") or data.get("recipient_data") or {}
+    sender_details: dict = data.get("sender_data") or data.get("sender_details") or {}
+    recipient_details: dict = data.get("recipient_data") or data.get("recipient_details") or {}
 
     service_data: dict = data.get("service_data") or {}
     branch_data: dict = data.get("branch_data") or {}
@@ -74,8 +74,23 @@ def _build_voucher_context(data: dict) -> dict:
     gift_card_url = _build_gift_voucher_url(public_token)
 
     gift_from = (data.get("gift_from") or sender_details.get("gift_from") or "").strip()
-    sender_name = sender_details.get("name") or data.get("sender_name") or "A generous friend"
-    recipient_name = recipient_details.get("name") or data.get("recipient_name") or "Valued Customer"
+    raw_sender = (sender_details.get("name") or data.get("sender_name") or "").strip()
+    if gift_from:
+        sender_name = gift_from
+    elif raw_sender:
+        sender_name = raw_sender
+    else:
+        sender_name = "A generous friend"
+
+    raw_recipient = (
+        recipient_details.get("name")
+        or recipient_details.get("full_name")
+        or recipient_details.get("recipient_name")
+        or data.get("recipient_name")
+        or data.get("recipient_full_name")
+        or ""
+    ).strip()
+    recipient_name = raw_recipient or "Valued Customer"
     service_name = service_data.get("name") or data.get("service_name") or "Spa Experience"
     branch_name = branch_data.get("name") or data.get("branch_name") or "USHSPA"
 
@@ -165,12 +180,18 @@ def _sender_whatsapp_message(ctx: dict) -> str:
 
 
 def _sender_whatsapp_message_ar(ctx: dict) -> str:
+    sender_name = ctx.get("gift_from") or ctx.get("sender_name") or "عميلنا"
+    if sender_name in ("A generous friend", ""):
+        sender_name = "عميلنا"
+    recipient_name = ctx.get("recipient_name") or "المستلم"
+    if recipient_name in ("Valued Customer", "Customer", ""):
+        recipient_name = "المستلم"
     lines = [
         "🎁 *تم إرسال الهدية بنجاح* — USHSPA",
         "",
-        f"عزيزي {ctx['sender_name']}،",
+        f"عزيزي {sender_name}،",
         "",
-        f"تم إرسال هديتك إلى *{ctx['recipient_name']}* وهي الآن مفعّلة! 🎉",
+        f"تم إرسال هديتك إلى *{recipient_name}* وهي الآن مفعّلة! 🎉",
         "",
         f"🧴 *الخدمة:* {ctx['service_name']}",
         f"📍 *الفرع:* {ctx['branch_name']}",
@@ -190,23 +211,21 @@ def _sender_whatsapp_message_ar(ctx: dict) -> str:
 
 
 def _sender_sms_message(ctx: dict) -> str:
-    name_first = (ctx["sender_name"] or "").split()[0] or "Customer"
-    recipient = ctx["recipient_name"] or "the recipient"
-    amount_part = f" ({ctx['total_amount']} {ctx['currency']})" if ctx["total_amount"] else ""
-    expire_part = f" Expires: {ctx['expire_date']}." if ctx["expire_date"] else ""
-    return (
-        f"USHSPA: Hi {name_first}, your gift{amount_part} has been sent to {recipient}.{expire_part} "
-        f"Thank you!"
-    )
+    # All SMS must be in Arabic, with no price or amount
+    return _sender_sms_message_ar(ctx)
 
 
 def _sender_sms_message_ar(ctx: dict) -> str:
-    name_first = (ctx["sender_name"] or "").split()[0] or "عميلنا"
-    recipient = ctx["recipient_name"] or "المستلم"
-    amount_part = f" ({ctx['total_amount']} {ctx['currency']})" if ctx["total_amount"] else ""
-    expire_part = f" تنتهي في: {ctx['expire_date']}." if ctx["expire_date"] else ""
+    sender = ctx.get("gift_from") or ctx.get("sender_name") or "عميلنا"
+    if sender in ("A generous friend", ""):
+        sender = "عميلنا"
+    name_first = sender.split()[0] if sender else "عميلنا"
+    recipient = ctx.get("recipient_name") or "المستلم"
+    if recipient in ("Valued Customer", "Customer", ""):
+        recipient = "المستلم"
+    expire_part = f" تنتهي في: {ctx['expire_date']}." if ctx.get("expire_date") else ""
     return (
-        f"USHSPA: مرحباً {name_first}، تم إرسال هديتك{amount_part} إلى {recipient}.{expire_part} "
+        f"USHSPA: مرحباً {name_first}، تم إرسال هديتك إلى {recipient}.{expire_part} "
         f"شكراً لك!"
     )
 
@@ -260,40 +279,8 @@ def _recipient_whatsapp_message(ctx: dict) -> str:
 
 
 def _recipient_sms_message(ctx: dict) -> str:
-    recipient_name = ctx.get("recipient_name") or "Customer"
-    if recipient_name == "Valued Customer":
-        recipient_name = "Customer"
-    sender = ctx.get("gift_from") or ctx.get("sender_name") or "Someone special"
-    message = ctx.get("gift_message") or "Happy birthday"
-    if not message.endswith("🎈 🙏🏻") and not message.endswith("\U0001f388 \U0001f64f\U0001f3fb"):
-        message_line = f"{message} 🎈 🙏🏻"
-    else:
-        message_line = message
-    url = ctx.get("gift_card_url") or ""
-
-    lines = [
-        "USHSPA:",
-        "",
-        f"Hi {recipient_name}, you received a gift from {sender} !",
-        "Message say:",
-        message_line,
-        "",
-        "View the link below to receive your gift",
-        "",
-        url,
-    ]
-    if ctx.get("recipient_password"):
-        lines += [
-            "",
-            f"Your temporary password: {ctx['recipient_password']}",
-        ]
-    elif ctx.get("is_new_user"):
-        lines += [
-            "",
-            "A new user account has been created for you. Download our app and set your password:",
-            ctx.get("app_install_url") or _APP_INSTALL_URL,
-        ]
-    return "\n".join(lines)
+    # All SMS must be in Arabic with no price or amount
+    return _recipient_sms_message_ar(ctx)
 
 
 def _recipient_whatsapp_message_ar(ctx: dict) -> str:
@@ -301,6 +288,8 @@ def _recipient_whatsapp_message_ar(ctx: dict) -> str:
     if recipient_name in ("Valued Customer", "Customer", ""):
         recipient_name = "عميلتنا العزيزة"
     sender_name = ctx.get("gift_from") or ctx.get("sender_name") or "شخص مميز"
+    if sender_name in ("A generous friend", ""):
+        sender_name = "شخص مميز"
 
     lines = [
         "🌸 *إهداء خاص وتجربة استرخاء فاخرة من Ush Spa* 🌸",
@@ -356,6 +345,8 @@ def _recipient_sms_message_ar(ctx: dict) -> str:
     if recipient_name in ("Valued Customer", "Customer", ""):
         recipient_name = "عميلتنا العزيزة"
     sender = ctx.get("gift_from") or ctx.get("sender_name") or "شخص مميز"
+    if sender in ("A generous friend", ""):
+        sender = "شخص مميز"
     message = ctx.get("gift_message")
     url = ctx.get("gift_card_url") or ""
 
@@ -377,6 +368,12 @@ def _recipient_sms_message_ar(ctx: dict) -> str:
         lines += [
             "",
             f"كلمة المرور المؤقتة: {ctx['recipient_password']}",
+        ]
+    elif ctx.get("is_new_user"):
+        lines += [
+            "",
+            "تم إنشاء حساب جديد لكِ. يمكنكِ تحميل تطبيقنا وتعيين كلمة المرور:",
+            ctx.get("app_install_url") or _APP_INSTALL_URL,
         ]
     return "\n".join(lines)
 
@@ -825,14 +822,12 @@ class VoucherActiveHandler:
         # SMS fallback (only sent if WhatsApp was NOT sent)
         if not whatsapp_sent:
             try:
-                if sender_lang == "en":
-                    sms_body = _sender_sms_message(vctx)
-                else:
-                    sms_body = _sender_sms_message_ar(vctx)
+                # All SMS must be in Arabic with no price or amount
+                sms_body = _sender_sms_message_ar(vctx)
                 sender_payload_sms = {
                     "phone_number": sender_phone,
                     "customer_name": sender_name,
-                    "language_preference": sender_lang,
+                    "language_preference": "ar",
                 }
                 sms_recipient = ChannelResolver.resolve_sms_recipient(sender_payload_sms)
                 if sms_recipient:

@@ -1,6 +1,6 @@
 {% if message_body and not ('Dear ' in message_body or 'Gift Sent' in message_body) %}{{ message_body }}{% else %}🎁 *تم إرسال الهدية بنجاح!* — USHSPA
 
-عزيزي {{ sender_name | default('العميل العزيز') }}،
+عزيزي {{ gift_from if gift_from else (sender_name | default('العميل العزيز')) }}،
 
 تم إرسال قسيمة الهدية بنجاح إلى *{{ recipient_name }}*! 💆‍♀️✨
 

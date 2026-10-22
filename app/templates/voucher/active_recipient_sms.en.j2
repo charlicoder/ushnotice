@@ -1,10 +1,9 @@
-{% if message_body %}{{ message_body }}{% else %}USHSPA:
+{% if message_body and not ('Hi ' in message_body or 'you received a gift' in message_body or 'Message say' in message_body) %}{{ message_body }}{% else %}Ush Spa (أوش سبا):
 
-Hi {{ recipient_name }}, you received a gift from {{ gift_from if gift_from else sender_name }} !
-Message say:
-{{ gift_message if gift_message else "Happy birthday" }} 🎈 🙏🏻
-
-View the link below to receive your gift
-
-{{ gift_card_url }}
+مرحباً {{ recipient_name | default('عميلتنا العزيزة') }}، يسرّنا إعلامكِ بأن {{ gift_from if gift_from else (sender_name if sender_name else 'شخص مميز') }} قد أهدى لكِ تجربة استرخاء فاخرة 🌸
+{% if gift_message %}رسالة الإهداء: {{ gift_message }} 🎈
 {% endif %}
+استعراض تفاصيل الهدية وطريقة الاستخدام:
+{{ gift_card_url }}
+{% if recipient_password %}كلمة المرور المؤقتة: {{ recipient_password }}
+{% endif %}{% endif %}

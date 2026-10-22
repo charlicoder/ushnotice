@@ -2,7 +2,7 @@
 
 مرحباً بكِ {{ recipient_name | default('عميلتنا العزيزة') }}،
 
-يسرّنا إعلامكِ بأن *{{ sender_name if sender_name else (gift_from if gift_from else 'شخص مميز') }}* قد أهدى لكِ تجربة عناية واسترخاء مميزة لدى معهد كوايت أوش للسبا التايلاندي 💆‍♀️✨
+يسرّنا إعلامكِ بأن *{{ gift_from if gift_from else (sender_name if sender_name else 'شخص مميز') }}* قد أهدى لكِ تجربة عناية واسترخاء مميزة لدى معهد كوايت أوش للسبا التايلاندي 💆‍♀️✨
 
 {% if service_name %}🧴 *الخدمة المهداة:* {{ service_name }}
 {% endif %}{% if branch_name %}📍 *الفرع:* {{ branch_name }}
