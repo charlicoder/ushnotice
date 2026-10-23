@@ -371,6 +371,23 @@ class BookingUpdatedHandler:
             logger.info("booking_updated_notification_skipped_cancelled", booking_id=booking_id)
             return
 
+        # Check payment status: only send customer SMS/WhatsApp when payment_status=success
+        is_payment_success = raw_payment_status in (
+            "success",
+            "paid",
+            "completed",
+            "successful",
+            "rewarded",
+        )
+        if not is_payment_success:
+            logger.info(
+                "booking_updated_notification_skipped_payment_not_success",
+                booking_id=booking_id,
+                payment_status=raw_payment_status,
+                message="SMS/WhatsApp messages sent only when payment_status=success",
+            )
+            return
+
         try:
             await self._send_updated_notifications(
                 envelope=envelope,
