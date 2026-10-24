@@ -157,6 +157,8 @@ class TestRecipientMessages:
         msg = _recipient_whatsapp_message(self.ctx)
         assert "655085" in msg
         assert "K Md Mamunur Rashid" in msg
+        assert "A Gift of Serenity ✨" in msg
+        assert "Alayna العزيزة،" in msg
 
     def test_whatsapp_message_contains_gift_card_url(self):
         msg = _recipient_whatsapp_message(self.ctx)
@@ -164,44 +166,55 @@ class TestRecipientMessages:
 
     def test_sms_message_matches_template(self):
         msg = _recipient_sms_message(self.ctx)
-        assert "Ush Spa" in msg
-        assert "Alayna" in msg
+        assert "A Gift of Serenity ✨" in msg
+        assert "Alayna العزيزة،" in msg
         assert "K Md Mamunur Rashid" in msg
+        assert "ush wellness .." in msg
+        assert "Gift Code: 655085" in msg
+        assert "للاطلاع على تفاصيل الإهداء" in msg
+        assert self.ctx["gift_card_url"] in msg
+        assert "لحظاتٌ لكِ وحدكِ،" in msg
+        assert "من الهدوء والعناية والدلال 🤍" in msg
         assert "45.000" not in msg
         assert "KWD" not in msg
-        assert self.ctx["gift_card_url"] in msg
 
     def test_sms_message_uses_gift_from_when_provided(self):
         ctx_with_gift_from = {**self.ctx, "gift_from": "Aunt Emily"}
         msg = _recipient_sms_message(ctx_with_gift_from)
         assert "Aunt Emily" in msg
-        assert "Alayna" in msg
+        assert "Alayna العزيزة،" in msg
+
+    def test_recipient_from_ushspa_to_field(self):
+        data = {
+            **SAMPLE_VOUCHER_DATA,
+            "to": "Fatema Al-Sabah",
+            "gift_from": "Laila",
+        }
+        ctx = _build_voucher_context(data)
+        assert ctx["recipient_name"] == "Fatema Al-Sabah"
+        assert ctx["sender_name"] == "Laila"
+        msg = _recipient_sms_message(ctx)
+        assert "Fatema Al-Sabah العزيزة،" in msg
+        assert "Laila" in msg
+
+    def test_recipient_from_ushweb_recipient_full_name_field(self):
+        data = {
+            **SAMPLE_VOUCHER_DATA,
+            "form_data": {
+                "Recipient's Full Name *": "Reem Al-Otaibi",
+                "gift_from": "Mona",
+            },
+        }
+        ctx = _build_voucher_context(data)
+        assert ctx["recipient_name"] == "Reem Al-Otaibi"
+        assert ctx["sender_name"] == "Mona"
+        msg = _recipient_sms_message(ctx)
+        assert "Reem Al-Otaibi العزيزة،" in msg
+        assert "Mona" in msg
 
     def test_email_subject_contains_sender(self):
         subject = _recipient_email_subject(self.ctx)
         assert "K Md Mamunur Rashid" in subject
-
-    def test_whatsapp_message_contains_password_when_provided(self):
-        ctx_with_pass = {**self.ctx, "recipient_password": "987654"}
-        msg = _recipient_whatsapp_message(ctx_with_pass)
-        assert "*Your Login Password:* 987654" in msg
-
-    def test_sms_message_contains_password_when_provided(self):
-        ctx_with_pass = {**self.ctx, "recipient_password": "987654"}
-        msg = _recipient_sms_message(ctx_with_pass)
-        assert "كلمة المرور المؤقتة: 987654" in msg
-
-    def test_whatsapp_message_contains_account_created_when_new_user_without_password(self):
-        ctx_new_user = {**self.ctx, "recipient_password": "", "is_new_user": True}
-        msg = _recipient_whatsapp_message(ctx_new_user)
-        assert "Account Created" in msg
-        assert "*Your Login Password:*" not in msg
-
-    def test_sms_message_contains_set_password_when_new_user_without_password(self):
-        ctx_new_user = {**self.ctx, "recipient_password": "", "is_new_user": True}
-        msg = _recipient_sms_message(ctx_new_user)
-        assert "تم إنشاء حساب جديد لكِ" in msg
-        assert "كلمة المرور المؤقتة" not in msg
 
 
 # ── VoucherRedeemedHandler — unit tests ───────────────────────────────────────

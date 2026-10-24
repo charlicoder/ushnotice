@@ -63,6 +63,8 @@ def _build_voucher_context(data: dict) -> dict:
     """Extract and normalise all gift-voucher fields for template rendering."""
     sender_details: dict = data.get("sender_data") or data.get("sender_details") or {}
     recipient_details: dict = data.get("recipient_data") or data.get("recipient_details") or {}
+    form_data: dict = data.get("form_data") or data.get("form") or {}
+    voucher_data: dict = data.get("voucher_data") or {}
 
     service_data: dict = data.get("service_data") or {}
     branch_data: dict = data.get("branch_data") or {}
@@ -71,10 +73,41 @@ def _build_voucher_context(data: dict) -> dict:
     expire_fmt = _fmt_expire(expire_raw) if expire_raw else ""
 
     public_token = data.get("public_token") or ""
-    gift_card_url = _build_gift_voucher_url(public_token)
+    gift_card_url = data.get("gift_card_url") or _build_gift_voucher_url(public_token)
 
-    gift_from = (data.get("gift_from") or sender_details.get("gift_from") or "").strip()
-    raw_sender = (sender_details.get("name") or data.get("sender_name") or "").strip()
+    gift_from = (
+        data.get("gift_from")
+        or sender_details.get("gift_from")
+        or form_data.get("gift_from")
+        or voucher_data.get("gift_from")
+        or data.get("from")
+        or data.get("From")
+        or sender_details.get("from")
+        or sender_details.get("From")
+        or form_data.get("from")
+        or form_data.get("From")
+        or ""
+    )
+    if isinstance(gift_from, str):
+        gift_from = gift_from.strip()
+    else:
+        gift_from = str(gift_from or "").strip()
+
+    raw_sender = (
+        form_data.get("sender_name")
+        or form_data.get("sender_full_name")
+        or form_data.get("name")
+        or sender_details.get("name")
+        or data.get("sender_name")
+        or data.get("sender_full_name")
+        or voucher_data.get("sender_name")
+        or ""
+    )
+    if isinstance(raw_sender, str):
+        raw_sender = raw_sender.strip()
+    else:
+        raw_sender = str(raw_sender or "").strip()
+
     if gift_from:
         sender_name = gift_from
     elif raw_sender:
@@ -82,14 +115,62 @@ def _build_voucher_context(data: dict) -> dict:
     else:
         sender_name = "A generous friend"
 
-    raw_recipient = (
-        recipient_details.get("name")
+    # Resolve recipient name from form data (ushspa "To", ushweb "Recipient's Full Name *")
+    # Form data must overwrite database/customer names.
+    form_to = (
+        form_data.get("to")
+        or form_data.get("To")
+        or data.get("to")
+        or data.get("To")
+        or voucher_data.get("to")
+        or voucher_data.get("To")
+        or recipient_details.get("to")
+        or recipient_details.get("To")
+        or ""
+    )
+    if isinstance(form_to, str):
+        form_to = form_to.strip()
+    else:
+        form_to = str(form_to or "").strip()
+
+    form_rec_full_name = (
+        form_data.get("Recipient's Full Name *")
+        or form_data.get("Recipient's Full Name")
+        or form_data.get("Recipient Full Name")
+        or form_data.get("recipient_full_name")
+        or data.get("Recipient's Full Name *")
+        or data.get("Recipient's Full Name")
+        or data.get("Recipient Full Name")
+        or data.get("recipient_full_name")
+        or voucher_data.get("recipient_full_name")
+        or recipient_details.get("Recipient's Full Name *")
+        or recipient_details.get("Recipient's Full Name")
+        or recipient_details.get("Recipient Full Name")
+        or recipient_details.get("recipient_full_name")
+        or ""
+    )
+    if isinstance(form_rec_full_name, str):
+        form_rec_full_name = form_rec_full_name.strip()
+    else:
+        form_rec_full_name = str(form_rec_full_name or "").strip()
+
+    generic_rec = (
+        form_data.get("recipient_name")
+        or form_data.get("full_name")
+        or form_data.get("name")
+        or recipient_details.get("name")
         or recipient_details.get("full_name")
         or recipient_details.get("recipient_name")
         or data.get("recipient_name")
-        or data.get("recipient_full_name")
+        or voucher_data.get("recipient_name")
         or ""
-    ).strip()
+    )
+    if isinstance(generic_rec, str):
+        generic_rec = generic_rec.strip()
+    else:
+        generic_rec = str(generic_rec or "").strip()
+
+    raw_recipient = form_to or form_rec_full_name or generic_rec
     recipient_name = raw_recipient or "Valued Customer"
     service_name = service_data.get("name") or data.get("service_name") or "Spa Experience"
     branch_name = branch_data.get("name") or data.get("branch_name") or "USHSPA"
@@ -237,145 +318,58 @@ def _sender_email_subject(ctx: dict) -> str:
 
 # ── Message composers — RECIPIENT ─────────────────────────────────────────────
 
-def _recipient_whatsapp_message(ctx: dict) -> str:
-    lines = [
-        "🎁 *You Have Received a Gift!* — USHSPA",
-        "",
-        f"Dear {ctx['recipient_name']},",
-        "",
-        f"*{ctx['sender_name']}* has sent you an exclusive spa gift! 💆‍♀️✨",
-        "",
-        f"🧴 *Service:* {ctx['service_name']}",
-        f"📍 *Branch:* {ctx['branch_name']}",
-    ]
-    if ctx.get("expire_date"):
-        lines.append(f"📅 *Valid Until:* {ctx['expire_date']}")
-    if ctx.get("gift_message"):
-        lines += ["", f"💬 *Message from {ctx['sender_name']}:* _{ctx['gift_message']}_"]
-    lines += [
-        "",
-        "🔐 *Your Secret Code:* " + (ctx["secret_code"] or "See your email"),
-    ]
-    if ctx.get("recipient_password"):
-        lines += [
-            "",
-            f"🔑 *Your Login Password:* {ctx['recipient_password']}",
-        ]
-    elif ctx.get("is_new_user"):
-        lines += [
-            "",
-            "✨ *Account Created:* A new account has been created for you. Download our app and set your password.",
-        ]
-    lines += [
-        "",
-        f"🌐 *View Your Gift Card:* {ctx['gift_card_url']}",
-        "",
-        "📱 To redeem, install the USHSPA app and register with this phone number:",
-        f"{ctx['app_install_url']}",
-        "",
-        "— The USHSPA Team",
-    ]
-    return "\n".join(lines)
+def _format_recipient_arabic(recipient_name: str) -> str:
+    """Format recipient name with Arabic honorific 'العزيزة'."""
+    name = (recipient_name or "").strip()
+    if not name or name in ("عميلتنا العزيزة", "Valued Customer", "Customer", "عميلتنا"):
+        return "عميلتنا العزيزة"
+    if name.endswith("العزيزة"):
+        return name
+    return f"{name} العزيزة"
 
 
-def _recipient_sms_message(ctx: dict) -> str:
-    # All SMS must be in Arabic with no price or amount
-    return _recipient_sms_message_ar(ctx)
-
-
-def _recipient_whatsapp_message_ar(ctx: dict) -> str:
-    recipient_name = ctx.get("recipient_name") or "عميلتنا العزيزة"
-    if recipient_name in ("Valued Customer", "Customer", ""):
-        recipient_name = "عميلتنا العزيزة"
-    sender_name = ctx.get("gift_from") or ctx.get("sender_name") or "شخص مميز"
-    if sender_name in ("A generous friend", ""):
-        sender_name = "شخص مميز"
-
-    lines = [
-        "🌸 *إهداء خاص وتجربة استرخاء فاخرة من Ush Spa* 🌸",
-        "",
-        f"مرحباً بكِ {recipient_name}،",
-        "",
-        f"يسرّنا إعلامكِ بأن *{sender_name}* قد أهدى لكِ تجربة عناية واسترخاء مميزة لدى معهد كوايت أوش للسبا التايلاندي 💆‍♀️✨",
-        "",
-    ]
-    if ctx.get("service_name"):
-        lines.append(f"🧴 *الخدمة المهداة:* {ctx['service_name']}")
-    if ctx.get("branch_name"):
-        lines.append(f"📍 *الفرع:* {ctx['branch_name']}")
-    if ctx.get("expire_date"):
-        lines.append(f"📅 *صالحة حتى:* {ctx['expire_date']}")
-    if ctx.get("gift_message"):
-        lines += ["", f"💌 *رسالة الإهداء:* _{ctx['gift_message']}_"]
-
-    secret_code = ctx.get("secret_code")
-    if secret_code:
-        lines += [
-            "",
-            f"🔐 *كود القسيمة:* {secret_code}",
-        ]
-
-    if ctx.get("recipient_password"):
-        lines += [
-            "",
-            f"🔑 *كلمة المرور المؤقتة:* {ctx['recipient_password']}",
-        ]
-    elif ctx.get("is_new_user"):
-        lines += [
-            "",
-            "✨ *تم تفعيل حساب جديد لكِ:* يمكنكِ تسجيل الدخول عبر تطبيقنا ومتابعة حجوزاتكِ بكل يسر وسهولة.",
-        ]
-
-    lines += [
-        "",
-        f"🌐 *استعراض تفاصيل هديتكِ وطريقة الاستخدام:*",
-        f"{ctx['gift_card_url']}",
-        "",
-        "📱 للاستفادة الكاملة وتأكيد الحجز، يمكنكِ تحميل تطبيق USH Spa:",
-        f"{ctx['app_install_url']}",
-        "",
-        "نتطلع بكل مودة لاستقبالكِ ونتمنى لكِ أوقاتاً مفعمة بالراحة والسكينة 🌿",
-        "— معهد كوايت أوش للسبا الصحي (Ush Spa)",
-    ]
-    return "\n".join(lines)
-
-
-def _recipient_sms_message_ar(ctx: dict) -> str:
-    recipient_name = ctx.get("recipient_name") or "عميلتنا العزيزة"
-    if recipient_name in ("Valued Customer", "Customer", ""):
-        recipient_name = "عميلتنا العزيزة"
+def _recipient_voucher_active_message(ctx: dict) -> str:
+    """Compose the active gift voucher SMS/WhatsApp message for recipient."""
+    recipient = _format_recipient_arabic(ctx.get("recipient_name") or "")
     sender = ctx.get("gift_from") or ctx.get("sender_name") or "شخص مميز"
     if sender in ("A generous friend", ""):
         sender = "شخص مميز"
-    message = ctx.get("gift_message")
-    url = ctx.get("gift_card_url") or ""
+    secret_code = ctx.get("secret_code") or ""
+    gift_card_url = ctx.get("gift_card_url") or ""
 
     lines = [
-        "Ush Spa (أوش سبا):",
+        "A Gift of Serenity ✨",
         "",
-        f"مرحباً {recipient_name}، يسرّنا إعلامكِ بأن {sender} قد أهدى لكِ تجربة استرخاء فاخرة 🌸",
-    ]
-    if message:
-        lines += [
-            f"رسالة الإهداء: {message} 🎈",
-        ]
-    lines += [
+        f"{recipient}،",
+        f"أُعدّ لكِ هذا الإهداء من {sender}، لتنعمي ",
+        "بتجربة من الرفاهية والاسترخاء ",
+        "في ush wellness .. ",
         "",
-        "استعراض تفاصيل الهدية وطريقة الاستخدام:",
-        url,
+        f"Gift Code: {secret_code}",
+        "للاطلاع على تفاصيل الإهداء",
+        "",
+        gift_card_url,
+        "",
+        "لحظاتٌ لكِ وحدكِ، ",
+        "من الهدوء والعناية والدلال 🤍",
     ]
-    if ctx.get("recipient_password"):
-        lines += [
-            "",
-            f"كلمة المرور المؤقتة: {ctx['recipient_password']}",
-        ]
-    elif ctx.get("is_new_user"):
-        lines += [
-            "",
-            "تم إنشاء حساب جديد لكِ. يمكنكِ تحميل تطبيقنا وتعيين كلمة المرور:",
-            ctx.get("app_install_url") or _APP_INSTALL_URL,
-        ]
     return "\n".join(lines)
+
+
+def _recipient_whatsapp_message(ctx: dict) -> str:
+    return _recipient_voucher_active_message(ctx)
+
+
+def _recipient_sms_message(ctx: dict) -> str:
+    return _recipient_voucher_active_message(ctx)
+
+
+def _recipient_whatsapp_message_ar(ctx: dict) -> str:
+    return _recipient_voucher_active_message(ctx)
+
+
+def _recipient_sms_message_ar(ctx: dict) -> str:
+    return _recipient_voucher_active_message(ctx)
 
 
 def _recipient_email_subject(ctx: dict) -> str:

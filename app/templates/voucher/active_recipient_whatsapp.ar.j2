@@ -1,26 +1,14 @@
-{% if message_body and not ('Dear ' in message_body or 'exclusive spa gift' in message_body or 'Booking Confirmed' in message_body) %}{{ message_body }}{% else %}🌸 *إهداء خاص وتجربة استرخاء فاخرة من Ush Spa* 🌸
+{% if message_body and not ('Dear ' in message_body or 'exclusive spa gift' in message_body or 'Booking Confirmed' in message_body) %}{{ message_body }}{% else %}A Gift of Serenity ✨
 
-مرحباً بكِ {{ recipient_name | default('عميلتنا العزيزة') }}،
+{{ recipient_name if (recipient_name and recipient_name not in ['Valued Customer', 'Customer', 'عميلتنا العزيزة']) else 'عميلتنا' }} العزيزة،
+أُعدّ لكِ هذا الإهداء من {{ gift_from if gift_from else (sender_name if sender_name and sender_name != 'A generous friend' else 'شخص مميز') }}، لتنعمي 
+بتجربة من الرفاهية والاسترخاء 
+في ush wellness .. 
 
-يسرّنا إعلامكِ بأن *{{ gift_from if gift_from else (sender_name if sender_name else 'شخص مميز') }}* قد أهدى لكِ تجربة عناية واسترخاء مميزة لدى معهد كوايت أوش للسبا التايلاندي 💆‍♀️✨
+Gift Code: {{ secret_code }}
+للاطلاع على تفاصيل الإهداء
 
-{% if service_name %}🧴 *الخدمة المهداة:* {{ service_name }}
-{% endif %}{% if branch_name %}📍 *الفرع:* {{ branch_name }}
-{% endif %}{% if expire_date %}📅 *صالحة حتى:* {{ expire_date }}
-{% endif %}{% if gift_message %}
-💌 *رسالة الإهداء:* _{{ gift_message }}_
-{% endif %}{% if secret_code %}
-🔐 *كود القسيمة:* {{ secret_code }}
-{% endif %}{% if recipient_password %}
-🔑 *كلمة المرور المؤقتة:* {{ recipient_password }}
-{% elif is_new_user %}
-✨ *تم تفعيل حساب جديد لكِ:* يمكنكِ تسجيل الدخول عبر تطبيقنا ومتابعة حجوزاتكِ بكل يسر وسهولة.
-{% endif %}
-🌐 *استعراض تفاصيل هديتكِ وطريقة الاستخدام:*
 {{ gift_card_url }}
 
-📱 للاستفادة الكاملة وتأكيد الحجز، يمكنكِ تحميل تطبيق USH Spa:
-{{ app_install_url | default('https://apps.apple.com/kw/app/ushspa/id6771279814') }}
-
-نتطلع بكل مودة لاستقبالكِ ونتمنى لكِ أوقاتاً مفعمة بالراحة والسكينة 🌿
-— معهد كوايت أوش للسبا الصحي (Ush Spa){% endif %}
+لحظاتٌ لكِ وحدكِ، 
+من الهدوء والعناية والدلال 🤍{% endif %}

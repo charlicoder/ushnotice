@@ -1,9 +1,14 @@
-{% if message_body and not ('Hi ' in message_body or 'you received a gift' in message_body or 'Message say' in message_body) %}{{ message_body }}{% else %}Ush Spa (أوش سبا):
+{% if message_body and not ('Hi ' in message_body or 'you received a gift' in message_body or 'Message say' in message_body) %}{{ message_body }}{% else %}A Gift of Serenity ✨
 
-مرحباً {{ recipient_name | default('عميلتنا العزيزة') }}، يسرّنا إعلامكِ بأن {{ gift_from if gift_from else (sender_name if sender_name else 'شخص مميز') }} قد أهدى لكِ تجربة استرخاء فاخرة 🌸
-{% if gift_message %}رسالة الإهداء: {{ gift_message }} 🎈
-{% endif %}
-استعراض تفاصيل الهدية وطريقة الاستخدام:
+{{ recipient_name if (recipient_name and recipient_name not in ['Valued Customer', 'Customer', 'عميلتنا العزيزة']) else 'عميلتنا' }} العزيزة،
+أُعدّ لكِ هذا الإهداء من {{ gift_from if gift_from else (sender_name if sender_name and sender_name != 'A generous friend' else 'شخص مميز') }}، لتنعمي 
+بتجربة من الرفاهية والاسترخاء 
+في ush wellness .. 
+
+Gift Code: {{ secret_code }}
+للاطلاع على تفاصيل الإهداء
+
 {{ gift_card_url }}
-{% if recipient_password %}كلمة المرور المؤقتة: {{ recipient_password }}
-{% endif %}{% endif %}
+
+لحظاتٌ لكِ وحدكِ، 
+من الهدوء والعناية والدلال 🤍{% endif %}
