@@ -37,7 +37,8 @@ class PaymentPendingHandler:
         customer_id = str(data.get("customer_id") or "")
         booking_id = str(data.get("booking_id") or "")
 
-        sms_recipient = ChannelResolver.resolve_sms_recipient(data)
+        # SMS intentionally disabled: no SMS/WhatsApp is sent while payment is not done.
+        sms_recipient = None
         if sms_recipient:
             req_sms = NotificationRequest(
                 event_id=envelope.event_id_str,

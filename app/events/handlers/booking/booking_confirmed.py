@@ -1002,6 +1002,12 @@ class BookingConfirmedHandler:
                 booking_id=booking_id,
                 customer_id=customer_id,
             )
+        elif _is_gift_voucher:
+            logger.info(
+                "booking_confirmed_loyalty_credit_skipped_gift_voucher",
+                booking_id=booking_id,
+                customer_id=customer_id,
+            )
         elif is_eligible_for_loyalty and not _loyalty_payment_succeeded:
             logger.info(
                 "booking_confirmed_loyalty_credit_deferred_until_payment",
@@ -1163,8 +1169,18 @@ class BookingConfirmedHandler:
         """Send standard 'booking confirmed' messages (payment already complete)."""
         whatsapp_sent = False
 
+        # Gift-voucher redemptions get their own dedicated gift message from the
+        # voucher.redeemed handler; skip the generic WhatsApp/SMS to avoid duplicates.
+        _skip_generic_sms = str(data.get("payment_type") or "").strip().lower() == "gift_voucher"
+        if _skip_generic_sms:
+            logger.info(
+                "booking_confirmed_generic_sms_skipped_gift_voucher",
+                booking_id=booking_id,
+                customer_id=customer_id,
+            )
+
         # WhatsApp (if verified)
-        if whatsapp_verified:
+        if whatsapp_verified and not _skip_generic_sms:
             wa_recipient = ChannelResolver.resolve_whatsapp_recipient(data)
             if wa_recipient:
                 if str(wa_recipient.language).strip().lower().startswith("en"):
@@ -1200,7 +1216,7 @@ class BookingConfirmedHandler:
                     )
 
         # SMS — only if WhatsApp was NOT sent
-        if not whatsapp_sent:
+        if not whatsapp_sent and not _skip_generic_sms:
             sms_recipient = ChannelResolver.resolve_sms_recipient(data)
             if sms_recipient:
                 # Booking confirmation SMS for payment_status=success must be sent in Arabic version

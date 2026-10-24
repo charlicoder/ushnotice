@@ -424,6 +424,16 @@ class VoucherActiveHandler:
             invoice_result=invoice_result,
         )
 
+        # ── Payment gate: notify ONLY when the voucher is ACTIVE (payment successful) ──
+        _voucher_status = str(data.get("status") or "").strip().lower()
+        if _voucher_status and _voucher_status != "active":
+            logger.info(
+                "voucher_active_notifications_skipped_not_active",
+                voucher_id=voucher_id,
+                status=_voucher_status,
+            )
+            return
+
         # ── 3. Notify SENDER ─────────────────────────────────────────────────
         sender_details: dict = data.get("sender_details") or {}
         sender_phone = sender_details.get("phone_number") or data.get("sender_phone") or ""

@@ -24,6 +24,18 @@ class CustomerNewCreatedHandler:
     event_type: str = "customer.new_created"
 
     async def handle(self, envelope: EventEnvelope, ctx: HandlerContext) -> None:
+        # Customers auto-created by get-or-create (gift voucher sender/recipient,
+        # ushdesk-created customers) are PENDING + mobile-unverified and must NOT
+        # receive any welcome SMS/WhatsApp. They are only messaged after they
+        # complete signup/OTP themselves (user.registered / user.verified events).
+        logger.info(
+            "customer_new_created_notification_suppressed",
+            event_id=envelope.event_id_str,
+            reason="pending_customer_no_welcome_sms",
+        )
+        return
+
+    async def _legacy_handle(self, envelope: EventEnvelope, ctx: HandlerContext) -> None:
         data = envelope.data
         service = NotificationService(ctx)
 
