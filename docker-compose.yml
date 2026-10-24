@@ -1,18 +1,29 @@
+# =============================================================================
+# ushnotice — docker-compose.yml (DEVELOPMENT)
+# For production use: docker compose -f docker-compose.prod.yml up --build -d
+#                 OR: ./start-prod.sh
+# =============================================================================
 
 services:
   web:
     build: .
-    container_name: ushnotice
+    container_name: ushnotice-dev
     ports:
       - "8004:8000"
     env_file:
       - .env
     restart: unless-stopped
     volumes:
+      # Mount source for hot-reload during development
       - ./app:/app/app
-
     networks:
       - ushspa-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 networks:
   ushspa-network:

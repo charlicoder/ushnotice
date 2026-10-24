@@ -1,0 +1,40 @@
+# =============================================================================
+# ushnotice — docker-compose.prod.yml (PRODUCTION)
+#
+# - Uses the production Dockerfile (multi-stage)
+# - NO source volume mount (code baked into image)
+# - Port: 8004 (host) → 8000 (container)
+# - Workers controlled by WORKERS env var in .env (default 2)
+#
+# Usage:
+#   ./start-prod.sh
+#   docker compose -f docker-compose.prod.yml up --build -d
+#   docker compose -f docker-compose.prod.yml logs -f
+#   docker compose -f docker-compose.prod.yml down
+# =============================================================================
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile           # Multi-stage production build
+    container_name: ushnotice
+    restart: unless-stopped
+    ports:
+      - "8004:8000"
+    expose:
+      - "8000"
+    env_file:
+      - .env                           # Set WORKERS=2 (or more) for production
+    networks:
+      - ushspa-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  ushspa-network:
+    external: true
