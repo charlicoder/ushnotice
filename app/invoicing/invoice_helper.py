@@ -121,12 +121,35 @@ def build_booking_invoice_lines(data: dict[str, Any]) -> list[dict[str, Any]]:
         or data.get("total_amount")
         or pricing.get("total")
     )
-    lines.append({
-        "account_id": revenue_acct,
-        "name": service_name,
-        "quantity": "1",
-        "unit_price": str(arrangement_price),
-    })
+    # Multi-service booking: one line per service, but only when the per-service
+    # prices reconcile with the booking's arrangement price (otherwise a single line).
+    svc_entries = [
+        e for e in (data.get("services") or []) if isinstance(e, dict)
+    ]
+    per_service_lines: list[dict[str, Any]] = []
+    if len(svc_entries) > 1:
+        entry_prices = [_d(e.get("base_price")) for e in svc_entries]
+        if sum(entry_prices, _ZERO) > _ZERO and abs(sum(entry_prices, _ZERO) - arrangement_price) <= Decimal("0.001"):
+            for e, price in zip(svc_entries, entry_prices):
+                per_service_lines.append({
+                    "account_id": revenue_acct,
+                    "name": str(
+                        e.get("service_name")
+                        or (e.get("service_data") or {}).get("name")
+                        or "Spa Service"
+                    ),
+                    "quantity": "1",
+                    "unit_price": str(price),
+                })
+    if per_service_lines:
+        lines.extend(per_service_lines)
+    else:
+        lines.append({
+            "account_id": revenue_acct,
+            "name": service_name,
+            "quantity": "1",
+            "unit_price": str(arrangement_price),
+        })
 
     addon_price = _d(data.get("addon_price") or pricing.get("addon_price"))
     if addon_price > _ZERO:

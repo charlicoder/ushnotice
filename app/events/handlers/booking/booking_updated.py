@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
+from app.events.handlers.booking._services import _cache_services
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.integrations.ushauth_client import UshAuthClient
@@ -285,6 +286,8 @@ class BookingUpdatedHandler:
                 branch_id=branch_id,
                 service_arrangement_id=service_arrangement_id,
                 correlation_id=correlation_id,
+                # Only sent for multi-service bookings (keeps the legacy call shape intact)
+                **({"services": _svcs} if (_svcs := _cache_services(data)) else {}),
             )
             logger.info(
                 "appointment_cache_updated_on_booking_updated_event",

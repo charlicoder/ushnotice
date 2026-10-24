@@ -118,8 +118,12 @@ class UshAuthClient:
         service_id: str | None = None,
         payment_status: str | None = None,
         correlation_id: str | None = None,
+        services: list[dict] | None = None,
     ) -> dict:
         """Create an appointment cache record in ushauth on booking confirmation.
+
+        ``services`` lists every service of a multi-service booking; the flat
+        ``service_id`` / ``service_arrangement_id`` describe the primary service.
 
         Called by BookingConfirmedHandler so that the availability calendar
         and therapist schedule are updated without ushbooknpay making the call.
@@ -162,6 +166,8 @@ class UshAuthClient:
             payload["service_id"] = service_id
         if payment_status:
             payload["payment_status"] = payment_status
+        if services:
+            payload["services"] = services
 
         return await self._client.post(
             "/api/v1/create-appointment-cache/",
@@ -248,6 +254,7 @@ class UshAuthClient:
         branch_id: str | None = None,
         service_arrangement_id: str | None = None,
         correlation_id: str | None = None,
+        services: list[dict] | None = None,
     ) -> dict:
         """Update appointment cache by booking_id.
 
@@ -288,6 +295,8 @@ class UshAuthClient:
             payload["branch_id"] = branch_id
         if service_arrangement_id:
             payload["service_arrangement_id"] = service_arrangement_id
+        if services:
+            payload["services"] = services
 
         return await self._client.post(
             "/api/v1/update-appointment-cache-by-booking-id/",

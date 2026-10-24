@@ -20,6 +20,7 @@ from typing import Any
 from dataclasses import replace
 
 from app.core.logging import get_logger
+from app.events.handlers.booking._services import _cache_services, service_names
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.notifications.application.channel_resolver import ChannelResolver
@@ -130,6 +131,7 @@ def _build_booking_context(data: dict) -> dict:
         "branch_location": branch_location,
         "branch_phone": branch_phone,
         "service_name": service_name,
+        "service_names": service_names(data) or [service_name],
         "service_description": service_description,
         "service_arrangement": data.get("service_arrangement") or "",
         "appointment_date": appointment_date,
@@ -517,6 +519,7 @@ class BookingConfirmedHandler:
                     service_id=str(data.get("service_id") or "") or None,
                     payment_status=cache_payment_status,
                     correlation_id=correlation_id,
+                    services=_cache_services(data),
                 )
                 await ushauth_client.aclose()
                 logger.info(

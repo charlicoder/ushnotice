@@ -10,6 +10,7 @@ Steps:
 from __future__ import annotations
 
 from app.core.logging import get_logger
+from app.events.handlers.booking._services import _cache_services
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.integrations.ushauth_client import UshAuthClient
@@ -101,6 +102,7 @@ class BookingPaymentPendingHandler:
                     service_id=str(data.get("service_id") or "") or None,
                     payment_status="pending",
                     correlation_id=correlation_id,
+                    services=_cache_services(data),
                 )
                 await ushauth_client.aclose()
                 logger.info(
