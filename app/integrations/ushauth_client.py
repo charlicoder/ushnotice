@@ -262,12 +262,19 @@ class UshAuthClient:
         """
         _STATUS_NORM = {
             "draft": "confirmed",
+            "confirmed": "confirmed",
+            "completed": "completed",
+            "cancelled": "cancelled",
             "payment_pending": "confirmed",
             "requested": "pending",
             "reschedule_requested": "pending",
             "reschedule_approved": "confirmed",
             "payment_failed": "cancelled",
             "no_show": "completed",
+            "checked_in": "confirmed",
+            "checkedin": "confirmed",
+            "in_progress": "confirmed",
+            "inprogress": "confirmed",
         }
         _PAYMENT_STATUS_NORM = {
             "not_initiated": "unpaid",
@@ -284,13 +291,22 @@ class UshAuthClient:
 
         payload: dict[str, Any] = {
             "booking_id": booking_id,
-            "appointment_date": appointment_date,
-            "appointment_time": appointment_time,
-            "duration": duration,
-            "therapist_id": therapist_id,
             "status": norm_status,
             "payment_status": norm_payment_status,
         }
+        if appointment_date:
+            payload["appointment_date"] = appointment_date
+        if appointment_time:
+            payload["appointment_time"] = appointment_time
+        if duration is not None:
+            try:
+                d_val = int(duration)
+                if d_val > 0:
+                    payload["duration"] = d_val
+            except (ValueError, TypeError):
+                pass
+        if therapist_id:
+            payload["therapist_id"] = therapist_id
         if branch_id:
             payload["branch_id"] = branch_id
         if service_arrangement_id:

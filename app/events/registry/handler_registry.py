@@ -181,12 +181,14 @@ def build_default_registry() -> HandlerRegistry:
             _extra_refund_handler.event_type = _extra_refund_key
             registry.register(_extra_refund_handler)
 
-    # Register BookingUpdatedHandler for booking.rescheduled and booking.status_updated events as well
+    # Register BookingUpdatedHandler for booking.rescheduled, booking.status_updated, and booking.completed events as well
     for _extra_key in (
         "booking.rescheduled",
         "booking_rescheduled",
         "booking.status_updated",
         "booking_status_updated",
+        "booking.completed",
+        "booking_completed",
     ):
         if not registry.has_handler(_extra_key):
             _extra_handler = BookingUpdatedHandler()

@@ -215,12 +215,35 @@ class BookingUpdatedHandler:
 
         appointment_date: str = str(data.get("appointment_date") or "")
         appointment_time: str = str(data.get("appointment_time") or "")
-        duration: int = int(data.get("duration") or 0)
+        raw_duration = (
+            data.get("duration")
+            or data.get("duration_minutes")
+            or data.get("total_duration")
+        )
+        duration: int | None = None
+        if raw_duration is not None:
+            try:
+                d_val = int(raw_duration)
+                if d_val > 0:
+                    duration = d_val
+            except (ValueError, TypeError):
+                duration = None
+
         therapist_id: str = str(data.get("therapist_id") or "")
-        raw_status: str = str(data.get("status") or "").lower().strip()
+        raw_status: str = str(data.get("status") or data.get("new_status") or envelope.event_type.split(".")[-1]).lower().strip()
         raw_payment_status: str = str(data.get("payment_status") or "").lower().strip()
         branch_id: str | None = data.get("branch_id")
         service_arrangement_id: str | None = data.get("service_arrangement_id")
+
+        # Intermediate statuses checked_in and in_progress do not update appointment_cache
+        if raw_status in ("checked_in", "checkedin", "in_progress", "inprogress"):
+            logger.info(
+                "skipping_appointment_cache_update_for_intermediate_status",
+                status=raw_status,
+                booking_id=booking_id,
+                event_id=correlation_id,
+            )
+            return
 
         _STATUS_MAP = {
             "draft": "confirmed",
@@ -233,6 +256,10 @@ class BookingUpdatedHandler:
             "reschedule_approved": "confirmed",
             "payment_failed": "cancelled",
             "no_show": "completed",
+            "checked_in": "confirmed",
+            "checkedin": "confirmed",
+            "in_progress": "confirmed",
+            "inprogress": "confirmed",
             "blocked": "blocked",
             "approved": "approved",
             "pending": "pending",
@@ -372,6 +399,11 @@ class BookingUpdatedHandler:
                     await booknpay_client.aclose()
 
             logger.info("booking_updated_notification_skipped_cancelled", booking_id=booking_id)
+            return
+
+        # Completed bookings: appointment cache updated to completed, skip updated/rescheduled notifications
+        if cache_status == "completed" or raw_status == "completed":
+            logger.info("booking_completed_cache_updated_successfully", booking_id=booking_id)
             return
 
         # Check payment status: only send customer SMS/WhatsApp when payment_status=success
