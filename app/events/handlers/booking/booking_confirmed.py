@@ -716,6 +716,8 @@ class BookingConfirmedHandler:
                 ).upper()
                 if "KNET" in _gw_raw or "K-NET" in _gw_raw:
                     normalised_gateway = "KNET"
+                elif "DEEMA" in _gw_raw:
+                    normalised_gateway = "Deema"
                 elif "TAP" in _gw_raw:
                     normalised_gateway = "TAP"
                 elif _gw_raw:
@@ -764,7 +766,7 @@ class BookingConfirmedHandler:
                     or raw_payment_data.get("payment_method")
                     or raw_payment_data.get("paymentMethod")
                     or raw_payment_data.get("PaymentMethod")
-                    or ("knet" if normalised_gateway == "KNET" else "card")
+                    or ("deema" if payment_provider == "Deema" else ("knet" if normalised_gateway == "KNET" else "card"))
                 )
 
                 # Resolve created_by_user and created_by_user_data
