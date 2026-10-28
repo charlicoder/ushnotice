@@ -119,6 +119,8 @@ class UshAuthClient:
         payment_status: str | None = None,
         correlation_id: str | None = None,
         services: list[dict] | None = None,
+        secondary_therapist_id: str | None = None,
+        secondary_therapist_name: str | None = None,
     ) -> dict:
         """Create an appointment cache record in ushauth on booking confirmation.
 
@@ -168,6 +170,10 @@ class UshAuthClient:
             payload["payment_status"] = payment_status
         if services:
             payload["services"] = services
+        if secondary_therapist_id:
+            payload["secondary_therapist_id"] = str(secondary_therapist_id)
+            if secondary_therapist_name:
+                payload["secondary_therapist_name"] = str(secondary_therapist_name)
 
         return await self._client.post(
             "/api/v1/create-appointment-cache/",
@@ -255,6 +261,9 @@ class UshAuthClient:
         service_arrangement_id: str | None = None,
         correlation_id: str | None = None,
         services: list[dict] | None = None,
+        secondary_therapist_id: str | None = None,
+        secondary_therapist_name: str | None = None,
+        **extra_fields: Any,
     ) -> dict:
         """Update appointment cache by booking_id.
 
@@ -313,6 +322,11 @@ class UshAuthClient:
             payload["service_arrangement_id"] = service_arrangement_id
         if services:
             payload["services"] = services
+        if secondary_therapist_id:
+            payload["secondary_therapist_id"] = str(secondary_therapist_id)
+            if secondary_therapist_name:
+                payload["secondary_therapist_name"] = str(secondary_therapist_name)
+        payload.update(extra_fields)
 
         return await self._client.post(
             "/api/v1/update-appointment-cache-by-booking-id/",

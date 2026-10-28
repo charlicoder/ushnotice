@@ -87,6 +87,15 @@ class BookingPaymentPendingHandler:
                     booking_id=booking_id,
                     payload=_cache_payload,
                 )
+                _sec_tid: str | None = str(data.get("secondary_therapist_id") or "") or None
+                _sec_tname: str | None = (
+                    str(
+                        data.get("secondary_therapist_name")
+                        or (data.get("secondary_therapist_data") or {}).get("name")
+                        or ""
+                    )
+                    or None
+                )
                 _cache_response = await ushauth_client.create_appointment_cache(
                     service_arrangement_id=_cache_payload["service_arrangement_id"],
                     therapist_id=_cache_payload["therapist_id"],
@@ -103,6 +112,14 @@ class BookingPaymentPendingHandler:
                     payment_status="pending",
                     correlation_id=correlation_id,
                     services=_cache_services(data),
+                    **(
+                        {
+                            "secondary_therapist_id": _sec_tid,
+                            **({"secondary_therapist_name": _sec_tname} if _sec_tname else {}),
+                        }
+                        if _sec_tid
+                        else {}
+                    ),
                 )
                 await ushauth_client.aclose()
                 logger.info(

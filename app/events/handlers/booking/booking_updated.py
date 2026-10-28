@@ -302,6 +302,15 @@ class BookingUpdatedHandler:
         # ── 1. Update appointment cache in ushauth ─────────────────────────
         ushauth_client = UshAuthClient()
         try:
+            _sec_tid: str | None = str(data.get("secondary_therapist_id") or "") or None
+            _sec_tname: str | None = (
+                str(
+                    data.get("secondary_therapist_name")
+                    or (data.get("secondary_therapist_data") or {}).get("name")
+                    or ""
+                )
+                or None
+            )
             response = await ushauth_client.update_appointment_cache_by_booking_id(
                 booking_id=booking_id,
                 appointment_date=appointment_date,
@@ -315,6 +324,14 @@ class BookingUpdatedHandler:
                 correlation_id=correlation_id,
                 # Only sent for multi-service bookings (keeps the legacy call shape intact)
                 **({"services": _svcs} if (_svcs := _cache_services(data)) else {}),
+                **(
+                    {
+                        "secondary_therapist_id": _sec_tid,
+                        **({"secondary_therapist_name": _sec_tname} if _sec_tname else {}),
+                    }
+                    if _sec_tid
+                    else {}
+                ),
             )
             logger.info(
                 "appointment_cache_updated_on_booking_updated_event",

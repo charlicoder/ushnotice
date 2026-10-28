@@ -503,6 +503,15 @@ class BookingConfirmedHandler:
                     booking_id=booking_id,
                     payload=_bc_cache_payload,
                 )
+                _sec_tid: str | None = str(data.get("secondary_therapist_id") or "") or None
+                _sec_tname: str | None = (
+                    str(
+                        data.get("secondary_therapist_name")
+                        or (data.get("secondary_therapist_data") or {}).get("name")
+                        or ""
+                    )
+                    or None
+                )
                 _bc_cache_response = await ushauth_client.create_appointment_cache(
                     # Pass None (not "") for optional UUID fields — ushauth UUIDField rejects empty strings
                     service_arrangement_id=_bc_cache_payload["service_arrangement_id"],
@@ -520,6 +529,14 @@ class BookingConfirmedHandler:
                     payment_status=cache_payment_status,
                     correlation_id=correlation_id,
                     services=_cache_services(data),
+                    **(
+                        {
+                            "secondary_therapist_id": _sec_tid,
+                            **({"secondary_therapist_name": _sec_tname} if _sec_tname else {}),
+                        }
+                        if _sec_tid
+                        else {}
+                    ),
                 )
                 await ushauth_client.aclose()
                 logger.info(
