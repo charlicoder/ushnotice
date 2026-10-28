@@ -145,6 +145,7 @@ def build_default_registry() -> HandlerRegistry:
 
     # ── Booking handlers ──────────────────────────────────────────────────────
     from app.events.handlers.booking.booking_cancelled import BookingCancelledHandler
+    from app.events.handlers.booking.booking_no_show import BookingNoShowHandler
     from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
     from app.events.handlers.booking.booking_requested import BookingRequestedHandler  # handles booking.created
     from app.events.handlers.booking.payment_pending import BookingPaymentPendingHandler
@@ -157,6 +158,7 @@ def build_default_registry() -> HandlerRegistry:
 
     for _h in [
         BookingCancelledHandler(),
+        BookingNoShowHandler(),      # event_type = "booking.no_show" — deletes appointment cache
         BookingConfirmedHandler(),
         BookingRequestedHandler(),   # event_type = "booking.created"
         BookingPaymentPendingHandler(),
@@ -181,7 +183,8 @@ def build_default_registry() -> HandlerRegistry:
             _extra_refund_handler.event_type = _extra_refund_key
             registry.register(_extra_refund_handler)
 
-    # Register BookingUpdatedHandler for booking.rescheduled, booking.status_updated, and booking.completed events as well
+    # Register BookingUpdatedHandler for booking.rescheduled, booking.status_updated and booking.completed
+    # events as well (completed keeps its cache row, updated to status "completed").
     for _extra_key in (
         "booking.rescheduled",
         "booking_rescheduled",
