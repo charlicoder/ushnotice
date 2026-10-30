@@ -180,16 +180,6 @@ def build_booking_invoice_lines(data: dict[str, Any]) -> list[dict[str, Any]]:
             "unit_price": str(extra_price),
         })
 
-    discount = _d(data.get("discount") or pricing.get("discount"))
-    if discount > _ZERO:
-        lines.append({
-            "account_id": revenue_acct,
-            "name": "Discount",
-            "quantity": "1",
-            "unit_price": str(discount),
-            "discount": "100",  # the discount line is itself a 100% -off line
-        })
-
     fees = _d(data.get("fees") or pricing.get("fees"))
     if fees > _ZERO:
         lines.append({
@@ -198,6 +188,34 @@ def build_booking_invoice_lines(data: dict[str, Any]) -> list[dict[str, Any]]:
             "quantity": "1",
             "unit_price": str(fees),
         })
+
+    target_total = _d(data.get("total_amount") or pricing.get("total"))
+    discount = _d(data.get("discount") or pricing.get("discount"))
+
+    # Net discount deduction: In ushanr, lines cannot have negative amounts, and discount
+    # field is a percentage (0..100). To ensure sum of line subtotals equals net total_amount,
+    # apply the discount directly against the line unit prices.
+    if discount > _ZERO and lines:
+        rem_discount = discount
+        for line in lines:
+            line_price = _d(line.get("unit_price"))
+            if line_price > _ZERO and rem_discount > _ZERO:
+                deduction = min(line_price, rem_discount)
+                line["unit_price"] = str((line_price - deduction).quantize(Decimal("0.001")))
+                rem_discount -= deduction
+                if rem_discount <= _ZERO:
+                    break
+
+    # If target_total is positive, reconcile any fractional rounding difference (e.g. 0.001 KWD)
+    if target_total > _ZERO and lines:
+        current_sum = sum(_d(l.get("unit_price")) * _d(l.get("quantity", "1")) for l in lines)
+        diff = target_total - current_sum
+        if abs(diff) <= Decimal("0.010") and diff != _ZERO:
+            for line in lines:
+                lp = _d(line.get("unit_price"))
+                if lp + diff >= _ZERO:
+                    line["unit_price"] = str((lp + diff).quantize(Decimal("0.001")))
+                    break
 
     return lines
 
@@ -209,7 +227,7 @@ def build_shop_order_invoice_lines(data: dict[str, Any]) -> list[dict[str, Any]]
     """
     Build invoice line items from a shop.order_created event payload.
 
-    One line per order item, plus a discount line if applicable.
+    One line per order item, adjusted for discounts so invoice total matches total_amount.
     """
     settings = get_settings()
     revenue_acct = settings.USHANR_REVENUE_ACCOUNT_ID
@@ -245,15 +263,30 @@ def build_shop_order_invoice_lines(data: dict[str, Any]) -> list[dict[str, Any]]
             "unit_price": str(total),
         })
 
+    target_total = _d(data.get("total_amount"))
     discount = _d(data.get("discount"))
-    if discount > _ZERO:
-        lines.append({
-            "account_id": revenue_acct,
-            "name": "Order Discount",
-            "quantity": "1",
-            "unit_price": str(discount),
-            "discount": "100",
-        })
+    if discount > _ZERO and lines:
+        rem_discount = discount
+        for line in lines:
+            qty = _d(line.get("quantity", "1"))
+            line_tot = _d(line.get("unit_price")) * qty
+            if line_tot > _ZERO and rem_discount > _ZERO:
+                deduction = min(line_tot, rem_discount)
+                new_unit_price = (line_tot - deduction) / qty
+                line["unit_price"] = str(new_unit_price.quantize(Decimal("0.001")))
+                rem_discount -= deduction
+                if rem_discount <= _ZERO:
+                    break
+
+    if target_total > _ZERO and lines:
+        current_sum = sum(_d(l.get("unit_price")) * _d(l.get("quantity", "1")) for l in lines)
+        diff = target_total - current_sum
+        if abs(diff) <= Decimal("0.010") and diff != _ZERO:
+            for line in lines:
+                lp = _d(line.get("unit_price"))
+                if lp + diff >= _ZERO:
+                    line["unit_price"] = str((lp + diff).quantize(Decimal("0.001")))
+                    break
 
     return lines
 
