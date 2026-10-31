@@ -388,6 +388,7 @@ async def trigger_gift_purchase_invoice(
 async def trigger_voucher_invoice(
     data: dict[str, Any],
     correlation_id: str | None = None,
+    **kwargs: Any,
 ) -> dict[str, Any] | None:
     """
     Create an invoice for a classic gift voucher purchase (voucher.active).

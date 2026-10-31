@@ -109,3 +109,34 @@ def test_render_booking_confirmed_email_en_and_ar() -> None:
     result_ar = renderer.render("booking/confirmed_email", lang="ar", context=ctx, is_html=True)
     assert "تم تأكيد الحجز" in result_ar
 
+
+def test_render_voucher_scheduled_sender_sms_en_and_ar() -> None:
+    renderer = TemplateRenderer()
+    ctx = {
+        "sender_name": "سارة",
+        "recipient_name": "نورة",
+        "scheduled_delivery_at": "2026-11-15 03:00 PM",
+        "message_body": "مرحباً سارة، تم استلام طلبك وجدولة إرسال بطاقة الهدية إلى نورة.",
+    }
+    result_ar = renderer.render("voucher/scheduled_sender_sms", lang="ar", context=ctx)
+    assert "مرحباً سارة" in result_ar
+    assert "نورة" in result_ar
+
+    ctx_en = {
+        "sender_name": "Sarah",
+        "recipient_name": "Noura",
+        "scheduled_delivery_at": "2026-11-15 03:00 PM",
+    }
+    result_en = renderer.render("voucher/scheduled_sender_sms", lang="en", context=ctx_en)
+    assert "Sarah" in result_en
+    assert "Noura" in result_en
+
+
+def test_render_missing_template_fallback_to_message_body() -> None:
+    renderer = TemplateRenderer()
+    ctx = {
+        "message_body": "Pre-composed direct message text",
+    }
+    result = renderer.render("non_existent/custom_template_sms", lang="ar", context=ctx)
+    assert result == "Pre-composed direct message text"
+

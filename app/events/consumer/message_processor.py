@@ -7,6 +7,8 @@ persisting the raw event, and delegating to the EventRouter.
 from __future__ import annotations
 
 import json
+import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import ValidationError
@@ -77,6 +79,21 @@ class MessageProcessor:
             raise EventValidationError(f"Invalid JSON payload: {exc}") from exc
 
         # 2. Validate against EventEnvelope
+        if isinstance(parsed_json, dict):
+            if "event_id" not in parsed_json:
+                parsed_json["event_id"] = str(uuid.uuid4())
+            if "occurred_at" not in parsed_json:
+                parsed_json["occurred_at"] = datetime.now(timezone.utc).isoformat()
+            if "version" not in parsed_json:
+                parsed_json["version"] = 1
+            if "source" not in parsed_json:
+                parsed_json["source"] = "aws_eventbridge_scheduler"
+            if "data" not in parsed_json or not isinstance(parsed_json.get("data"), dict):
+                parsed_json["data"] = {
+                    k: v for k, v in parsed_json.items()
+                    if k not in ("event_id", "event_type", "version", "occurred_at", "source", "correlation_id", "causation_id")
+                }
+
         try:
             envelope = EventEnvelope.model_validate(parsed_json)
         except ValidationError as exc:

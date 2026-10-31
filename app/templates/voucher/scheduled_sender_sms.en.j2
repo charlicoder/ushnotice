@@ -1,0 +1,3 @@
+{% if message_body %}{{ message_body }}{% else %}Hello {{ gift_from if gift_from else (sender_name | default('Valued Customer')) }},
+Your request has been received and the gift voucher is scheduled for delivery to {{ recipient_name }} on {{ scheduled_delivery_at }}.
+Thank you for choosing USHSPA.{% endif %}

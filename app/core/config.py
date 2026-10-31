@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyUrl, Field, SecretStr, field_validator
+from pydantic import AnyUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -112,7 +112,10 @@ class Settings(BaseSettings):
 
     # SQS
     AWS_SQS_NOTIFICATION_QUEUE_URL: str = ""
+    AWS_SQS_QUEUE_URL: str = ""
+    AWS_SQS_URL: str = ""
     AWS_SQS_NOTIFICATION_DLQ_URL: str = ""
+    AWS_ENDPOINT_URL: str = ""
 
     # SQS consumer tuning
     SQS_MAX_MESSAGES: int = Field(default=10, ge=1, le=10)
@@ -227,6 +230,12 @@ class Settings(BaseSettings):
                 except Exception:
                     v = v.replace("host.docker.internal", "localhost")
         return v
+
+    @model_validator(mode="after")
+    def validate_sqs_urls(self) -> "Settings":
+        if not self.AWS_SQS_NOTIFICATION_QUEUE_URL:
+            self.AWS_SQS_NOTIFICATION_QUEUE_URL = self.AWS_SQS_QUEUE_URL or self.AWS_SQS_URL
+        return self
 
     # ── Derived helpers ───────────────────────────────────────────────────────
 

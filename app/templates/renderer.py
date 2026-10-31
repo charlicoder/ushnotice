@@ -130,6 +130,22 @@ class TemplateRenderer:
             except Exception as exc:
                 raise TemplateRenderError(candidate, exc) from exc
 
+        # Defensive fallback: if context contains a pre-composed message_body or raw_body, use it
+        if "message_body" in context and context["message_body"]:
+            logger.debug(
+                "Using message_body fallback for missing template",
+                template=template_name,
+                lang=lang,
+            )
+            return str(context["message_body"]).strip()
+        if "raw_body" in context and context["raw_body"]:
+            logger.debug(
+                "Using raw_body fallback for missing template",
+                template=template_name,
+                lang=lang,
+            )
+            return str(context["raw_body"]).strip()
+
         raise TemplateRenderError(
             f"{template_name}.{lang}.j2",
             FileNotFoundError(

@@ -1,0 +1,3 @@
+{% if message_body %}{{ message_body }}{% else %}مرحباً {{ gift_from if gift_from else (sender_name | default('عميلنا العزيز')) }}،
+تم استلام طلبك وجدولة إرسال بطاقة الهدية إلى {{ recipient_name }} بتاريخ {{ scheduled_delivery_at }}.
+شكراً لاختيارك يوش سبا.{% endif %}

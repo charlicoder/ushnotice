@@ -39,6 +39,8 @@ class SQSProducer:
             session_token = settings.AWS_SESSION_TOKEN.strip()
             if session_token:
                 client_kwargs["aws_session_token"] = session_token
+        if settings.AWS_ENDPOINT_URL:
+            client_kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
 
         self._sqs_client = boto3.client(**client_kwargs)
 

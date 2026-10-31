@@ -530,6 +530,12 @@ class VoucherActiveHandler:
 
             # sender_id is the registered customer UUID who purchased the voucher
             sender_id: str = str(data.get("sender_id") or "")
+            resolved_customer_id: str = (
+                str(data.get("customer_id") or "")
+                or sender_id
+                or str(data.get("recipient_id") or "")
+                or str(voucher_id)
+            )
 
             # ── Normalise payment_gateway to spec values ───────────────────
             _gw_raw = str(payment_data.get("paymentGateway") or payment_data.get("PaymentGateway") or "").upper()
@@ -631,7 +637,7 @@ class VoucherActiveHandler:
 
             payload: dict[str, Any] = {
                 # ── Required fields ────────────────────────────────────────
-                "customer_id": sender_id or None,
+                "customer_id": resolved_customer_id,
                 "total_amount": str(vctx["total_amount"] or invoice_value or "0"),
                 "total_duration": int(vctx.get("total_duration") or 0),
                 "currency": vctx["currency"],

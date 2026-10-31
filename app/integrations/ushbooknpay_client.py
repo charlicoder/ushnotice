@@ -106,6 +106,21 @@ class UshBookNPayClient:
             correlation_id=correlation_id,
         )
 
+    async def activate_scheduled_voucher(
+        self,
+        voucher_id: str,
+        *,
+        delivery_result: dict[str, Any] | None = None,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Call ushbooknpay to activate a scheduled gift voucher at delivery time."""
+        payload = {"delivery_result": delivery_result or {"source": "ushnotice_delivery_due"}}
+        return await self._client.post(
+            f"/api/v1/vouchers/{voucher_id}/schedule/activate/",
+            json=payload,
+            correlation_id=correlation_id,
+        )
+
     async def create_payment(
         self,
         *,
