@@ -112,6 +112,7 @@ class BookingPaymentPendingHandler:
                     payment_status="pending",
                     correlation_id=correlation_id,
                     services=_cache_services(data),
+                    sessions=data.get("sessions"),
                     **(
                         {
                             "secondary_therapist_id": _sec_tid,

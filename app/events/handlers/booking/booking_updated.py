@@ -16,6 +16,10 @@ from typing import Any
 
 from app.core.logging import get_logger
 from app.events.handlers.booking._services import _cache_services
+from app.events.handlers.booking._session_formatters import (
+    _session_lines_ar,
+    _session_lines_en,
+)
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.integrations.ushauth_client import UshAuthClient
@@ -77,16 +81,22 @@ def _build_update_context(data: dict) -> dict:
         "appointment_time": appointment_time,
         "appointment_end_time": appointment_end_time,
         "therapist_name": therapist_name,
+        # multi-session – populated when booking has multiple sessions
+        "sessions": data.get("sessions") or [],
     }
 
 
 def _whatsapp_updated_message_ar(context: dict, customer_name: str) -> str:
-    """Compose Arabic WhatsApp booking updated/rescheduled message."""
+    """Compose Arabic WhatsApp booking updated/rescheduled message.
+
+    Multi-session aware: shows per-session lines when booking has > 1 session.
+    """
     name = customer_name or "العميل العزيز"
     date_str = context.get("appointment_date") or ""
     time_str = context.get("appointment_time") or ""
     end_time_str = context.get("appointment_end_time") or ""
     time_range = f"{time_str}–{end_time_str}" if end_time_str else time_str
+    sessions: list[dict] = context.get("sessions") or []
 
     lines = [
         "🔄 *تم تحديث موعد الحجز* — USHSPA",
@@ -96,12 +106,16 @@ def _whatsapp_updated_message_ar(context: dict, customer_name: str) -> str:
         "تم تحديث تفاصيل حجزك بنجاح. التفاصيل الجديدة للموعد:",
         "",
         f"📅 *التاريخ الجديد:* {date_str}",
-        f"🕐 *الوقت الجديد:* {time_range}",
     ]
-    if context.get("therapist_name"):
-        lines.append(f"💆 *المعالج/ة:* {context['therapist_name']}")
-    if context.get("service_name"):
-        lines.append(f"🧴 *الخدمة:* {context['service_name']}")
+    if len(sessions) > 1:
+        lines.append("🕐 *الجلسات:*")
+        lines.extend(_session_lines_ar(sessions))
+    else:
+        lines.append(f"🕐 *الوقت الجديد:* {time_range}")
+        if context.get("therapist_name"):
+            lines.append(f"💆 *المعالج/ة:* {context['therapist_name']}")
+        if context.get("service_name"):
+            lines.append(f"🧴 *الخدمة:* {context['service_name']}")
     if context.get("branch_name"):
         lines.append(f"📍 *الفرع:* {context['branch_name']}")
     ref = context.get("booking_number") or context.get("booking_reference")
@@ -119,12 +133,21 @@ def _whatsapp_updated_message_ar(context: dict, customer_name: str) -> str:
 
 
 def _sms_updated_message_ar(context: dict, customer_name: str) -> str:
-    """Compose concise Arabic SMS booking updated/rescheduled message."""
+    """Compose concise Arabic SMS booking updated/rescheduled message.
+
+    For multi-session bookings shows session count instead of a single time.
+    """
     name = customer_name.split()[0] if customer_name else "عميلنا"
     date_str = context.get("appointment_date") or ""
-    time_str = context.get("appointment_time") or ""
     ref = context.get("booking_number") or context.get("booking_reference") or ""
     ref_part = f" رقم الحجز: {ref}" if ref else ""
+    sessions: list[dict] = context.get("sessions") or []
+    if len(sessions) > 1:
+        return (
+            f"USHSPA:\n"
+            f"مرحباً {name}، تم تحديث حجزك ({len(sessions)} جلسات) ليوم {date_str}.{ref_part} نتشرف بزيارتكم!"
+        )
+    time_str = context.get("appointment_time") or ""
     return (
         f"USHSPA:\n"
         f"مرحباً {name}، تم تحديث موعد حجزك إلى {date_str} الساعة {time_str}.{ref_part} نتشرف بزيارتكم!"
@@ -132,12 +155,16 @@ def _sms_updated_message_ar(context: dict, customer_name: str) -> str:
 
 
 def _whatsapp_updated_message_en(context: dict, customer_name: str) -> str:
-    """Compose English WhatsApp booking updated/rescheduled message."""
+    """Compose English WhatsApp booking updated/rescheduled message.
+
+    Multi-session aware: shows per-session lines when booking has > 1 session.
+    """
     name = customer_name or "Valued Customer"
     date_str = context.get("appointment_date") or ""
     time_str = context.get("appointment_time") or ""
     end_time_str = context.get("appointment_end_time") or ""
     time_range = f"{time_str}–{end_time_str}" if end_time_str else time_str
+    sessions: list[dict] = context.get("sessions") or []
 
     lines = [
         "🔄 *Booking Updated* — USHSPA",
@@ -147,12 +174,16 @@ def _whatsapp_updated_message_en(context: dict, customer_name: str) -> str:
         "Your booking details have been successfully updated. Here are your updated appointment details:",
         "",
         f"📅 *New Date:* {date_str}",
-        f"🕐 *New Time:* {time_range}",
     ]
-    if context.get("therapist_name"):
-        lines.append(f"💆 *Therapist:* {context['therapist_name']}")
-    if context.get("service_name"):
-        lines.append(f"🧴 *Service:* {context['service_name']}")
+    if len(sessions) > 1:
+        lines.append("🕐 *Sessions:*")
+        lines.extend(_session_lines_en(sessions))
+    else:
+        lines.append(f"🕐 *New Time:* {time_range}")
+        if context.get("therapist_name"):
+            lines.append(f"💆 *Therapist:* {context['therapist_name']}")
+        if context.get("service_name"):
+            lines.append(f"🧴 *Service:* {context['service_name']}")
     if context.get("branch_name"):
         lines.append(f"📍 *Branch:* {context['branch_name']}")
     ref = context.get("booking_number") or context.get("booking_reference")
@@ -170,12 +201,21 @@ def _whatsapp_updated_message_en(context: dict, customer_name: str) -> str:
 
 
 def _sms_updated_message_en(context: dict, customer_name: str) -> str:
-    """Compose concise English SMS booking updated/rescheduled message."""
+    """Compose concise English SMS booking updated/rescheduled message.
+
+    For multi-session bookings shows session count instead of a single time.
+    """
     name = customer_name.split()[0] if customer_name else "Customer"
     date_str = context.get("appointment_date") or ""
-    time_str = context.get("appointment_time") or ""
     ref = context.get("booking_number") or context.get("booking_reference") or ""
     ref_part = f" Booking Ref:{ref}" if ref else ""
+    sessions: list[dict] = context.get("sessions") or []
+    if len(sessions) > 1:
+        return (
+            f"USHSPA:\n"
+            f"Hi {name}, your {len(sessions)}-session booking has been UPDATED to {date_str}.{ref_part} See you soon!"
+        )
+    time_str = context.get("appointment_time") or ""
     return (
         f"USHSPA:\n"
         f"Hi {name}, your booking has been UPDATED to {date_str} at {time_str}.{ref_part} See you soon!"

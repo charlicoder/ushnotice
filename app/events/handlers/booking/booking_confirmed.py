@@ -21,6 +21,11 @@ from dataclasses import replace
 
 from app.core.logging import get_logger
 from app.events.handlers.booking._services import _cache_services, service_names
+from app.events.handlers.booking._session_formatters import (
+    _fmt_time,
+    _session_lines_ar,
+    _session_lines_en,
+)
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.notifications.application.channel_resolver import ChannelResolver
@@ -142,6 +147,8 @@ def _build_booking_context(data: dict) -> dict:
         "total_amount": total_amount,
         "currency": data.get("currency") or "KWD",
         "payment_data": payment_data,
+        # multi-session – populated when booking has multiple sessions
+        "sessions": data.get("sessions") or [],
     }
 
 
@@ -155,6 +162,7 @@ def _whatsapp_message(context: dict, customer_name: str) -> str:
     time_range = f"{time_str}–{end_time_str}" if end_time_str else time_str
     amount = context["total_amount"]
     currency = context["currency"]
+    sessions: list[dict] = context.get("sessions") or []
 
     lines = [
         f"✅ *Booking Confirmed* — USHSPA",
@@ -164,12 +172,18 @@ def _whatsapp_message(context: dict, customer_name: str) -> str:
         f"Your booking has been successfully confirmed. Here are your details:",
         f"",
         f"📅 *Date:* {date_str}",
-        f"🕐 *Time:* {time_range}",
     ]
-    if context["therapist_name"]:
-        lines.append(f"💆 *Therapist:* {context['therapist_name']}")
-    if context["service_name"]:
-        lines.append(f"🧴 *Service:* {context['service_name']}")
+
+    if len(sessions) > 1:
+        lines.append(f"🕐 *Sessions:*")
+        lines.extend(_session_lines_en(sessions))
+    else:
+        lines.append(f"🕐 *Time:* {time_range}")
+        if context["therapist_name"]:
+            lines.append(f"💆 *Therapist:* {context['therapist_name']}")
+        if context["service_name"]:
+            lines.append(f"🧴 *Service:* {context['service_name']}")
+
     if context["branch_name"]:
         lines.append(f"📍 *Branch:* {context['branch_name']}")
     if amount:
@@ -190,18 +204,22 @@ def _whatsapp_message(context: dict, customer_name: str) -> str:
 def _sms_message(context: dict, customer_name: str) -> str:
     """Compose a concise SMS confirmation message.
 
-    Format:
-        USHSPA:
-        Hi <name>, your booking is CONFIRMED for <date> at <time>. Your booking number:<number> See you soon!
+    For multi-session bookings shows session count instead of a single time.
     """
     name = customer_name.split()[0] if customer_name else "Customer"
     date_str = context["appointment_date"]
-    time_str = context["appointment_time"]
     booking_number = context.get("booking_number") or context.get("booking_reference") or ""
+    ref_part = f" Ref:{booking_number}" if booking_number else ""
+    sessions: list[dict] = context.get("sessions") or []
+    if len(sessions) > 1:
+        return (
+            f"USHSPA:\n"
+            f"Hi {name}, your {len(sessions)}-session booking is CONFIRMED for {date_str}.{ref_part} See you soon!"
+        )
+    time_str = context["appointment_time"]
     return (
-        f"USHSPA: \n"
-        f"Hi {name}, your booking is CONFIRMED for {date_str} at {time_str}."
-        f" Your booking number:{booking_number} See you soon!"
+        f"USHSPA:\n"
+        f"Hi {name}, your booking is CONFIRMED for {date_str} at {time_str}.{ref_part} See you soon!"
     )
 
 
@@ -218,6 +236,7 @@ def _whatsapp_pending_payment_message(
     """
     WhatsApp message for confirmed bookings where payment is still pending.
     Includes the payment link so the customer can complete payment.
+    Multi-session aware: shows per-session lines when booking has > 1 session.
     """
     name = customer_name or "Valued Customer"
     date_str = context["appointment_date"]
@@ -226,6 +245,7 @@ def _whatsapp_pending_payment_message(
     time_range = f"{time_str}–{end_time_str}" if end_time_str else time_str
     amount = context["total_amount"]
     currency = context["currency"]
+    sessions: list[dict] = context.get("sessions") or []
 
     lines = [
         "📋 *Booking Confirmed – Payment Required* — USHSPA",
@@ -235,12 +255,16 @@ def _whatsapp_pending_payment_message(
         "Great news! Your booking has been *confirmed*. Please complete your payment to secure your appointment.",
         "",
         f"📅 *Date:* {date_str}",
-        f"🕐 *Time:* {time_range}",
     ]
-    if context["therapist_name"]:
-        lines.append(f"💆 *Therapist:* {context['therapist_name']}")
-    if context["service_name"]:
-        lines.append(f"🧴 *Service:* {context['service_name']}")
+    if len(sessions) > 1:
+        lines.append("🕐 *Sessions:*")
+        lines.extend(_session_lines_en(sessions))
+    else:
+        lines.append(f"🕐 *Time:* {time_range}")
+        if context["therapist_name"]:
+            lines.append(f"💆 *Therapist:* {context['therapist_name']}")
+        if context["service_name"]:
+            lines.append(f"🧴 *Service:* {context['service_name']}")
     if context["branch_name"]:
         lines.append(f"📍 *Branch:* {context['branch_name']}")
     if amount:
@@ -263,13 +287,22 @@ def _whatsapp_pending_payment_message(
 def _sms_pending_payment_message(
     context: dict, customer_name: str, payment_link: str
 ) -> str:
-    """Concise SMS for confirmed bookings where payment is still pending."""
+    """Concise SMS for confirmed bookings where payment is still pending.
+
+    For multi-session bookings shows session count instead of a single time.
+    """
     name = customer_name.split()[0] if customer_name else "Customer"
     date_str = context["appointment_date"]
-    time_str = context["appointment_time"]
     amount = context["total_amount"]
     currency = context["currency"]
     amount_part = f" {amount} {currency}" if amount else ""
+    sessions: list[dict] = context.get("sessions") or []
+    if len(sessions) > 1:
+        return (
+            f"USHSPA: Hi {name}, your {len(sessions)}-session booking for {date_str} is confirmed. "
+            f"Please pay{amount_part} to secure your slots: {payment_link}"
+        )
+    time_str = context["appointment_time"]
     return (
         f"USHSPA: Hi {name}, your booking for {date_str} at {time_str} is confirmed. "
         f"Please pay{amount_part} to secure your slot: {payment_link}"
@@ -286,7 +319,10 @@ def _email_pending_payment_subject(context: dict) -> str:
 
 
 def _whatsapp_message_ar(context: dict, customer_name: str) -> str:
-    """Compose a professional Arabic WhatsApp confirmation message."""
+    """Compose a professional Arabic WhatsApp confirmation message.
+
+    Multi-session aware: shows per-session lines when booking has > 1 session.
+    """
     name = customer_name or "العميل العزيز"
     date_str = context["appointment_date"]
     time_str = context["appointment_time"]
@@ -294,6 +330,7 @@ def _whatsapp_message_ar(context: dict, customer_name: str) -> str:
     time_range = f"{time_str}–{end_time_str}" if end_time_str else time_str
     amount = context.get("total_amount") or ""
     currency = context.get("currency") or "KWD"
+    sessions: list[dict] = context.get("sessions") or []
 
     lines = [
         "✅ *تم تأكيد الحجز* — USHSPA",
@@ -303,12 +340,16 @@ def _whatsapp_message_ar(context: dict, customer_name: str) -> str:
         "تم تأكيد حجزك بنجاح. تفاصيل الحجز:",
         "",
         f"📅 *التاريخ:* {date_str}",
-        f"🕐 *الوقت:* {time_range}",
     ]
-    if context.get("therapist_name"):
-        lines.append(f"💆 *المعالج/ة:* {context['therapist_name']}")
-    if context.get("service_name"):
-        lines.append(f"🧴 *الخدمة:* {context['service_name']}")
+    if len(sessions) > 1:
+        lines.append("🕐 *الجلسات:*")
+        lines.extend(_session_lines_ar(sessions))
+    else:
+        lines.append(f"🕐 *الوقت:* {time_range}")
+        if context.get("therapist_name"):
+            lines.append(f"💆 *المعالج/ة:* {context['therapist_name']}")
+        if context.get("service_name"):
+            lines.append(f"🧴 *الخدمة:* {context['service_name']}")
     if context.get("branch_name"):
         lines.append(f"📍 *الفرع:* {context['branch_name']}")
     if amount:
@@ -327,12 +368,21 @@ def _whatsapp_message_ar(context: dict, customer_name: str) -> str:
 
 
 def _sms_message_ar(context: dict, customer_name: str) -> str:
-    """Compose a concise Arabic SMS confirmation message."""
+    """Compose a concise Arabic SMS confirmation message.
+
+    For multi-session bookings shows session count instead of a single time.
+    """
     name = customer_name.split()[0] if customer_name else "عميلنا"
     date_str = context["appointment_date"]
-    time_str = context["appointment_time"]
     booking_number = context.get("booking_number") or context.get("booking_reference") or ""
     ref_part = f" رقم المرجع: {booking_number}" if booking_number else ""
+    sessions: list[dict] = context.get("sessions") or []
+    if len(sessions) > 1:
+        return (
+            f"USHSPA:\n"
+            f"مرحباً {name}، تم تأكيد حجزك ({len(sessions)} جلسات) في {date_str}.{ref_part} نتشرف بزيارتكم!"
+        )
+    time_str = context["appointment_time"]
     return (
         f"USHSPA:\n"
         f"مرحباً {name}، تم تأكيد حجزك في {date_str} الساعة {time_str}.{ref_part} نتشرف بزيارتكم!"
@@ -342,7 +392,10 @@ def _sms_message_ar(context: dict, customer_name: str) -> str:
 def _whatsapp_pending_payment_message_ar(
     context: dict, customer_name: str, payment_link: str
 ) -> str:
-    """Compose Arabic WhatsApp message for confirmed bookings requiring payment."""
+    """Compose Arabic WhatsApp message for confirmed bookings requiring payment.
+
+    Multi-session aware: shows per-session lines when booking has > 1 session.
+    """
     name = customer_name or "عميلنا الكريم"
     date_str = context["appointment_date"]
     time_str = context["appointment_time"]
@@ -350,6 +403,7 @@ def _whatsapp_pending_payment_message_ar(
     time_range = f"{time_str}–{end_time_str}" if end_time_str else time_str
     amount = context.get("total_amount") or ""
     currency = context.get("currency") or "KWD"
+    sessions: list[dict] = context.get("sessions") or []
 
     lines = [
         "📋 *تأكيد الحجز – يلزم الدفع* — USHSPA",
@@ -359,12 +413,16 @@ def _whatsapp_pending_payment_message_ar(
         "تم تأكيد حجزك! يرجى إتمام الدفع لتأمين موعدك.",
         "",
         f"📅 *التاريخ:* {date_str}",
-        f"🕐 *الوقت:* {time_range}",
     ]
-    if context.get("therapist_name"):
-        lines.append(f"💆 *المعالج/ة:* {context['therapist_name']}")
-    if context.get("service_name"):
-        lines.append(f"🧴 *الخدمة:* {context['service_name']}")
+    if len(sessions) > 1:
+        lines.append("🕐 *الجلسات:*")
+        lines.extend(_session_lines_ar(sessions))
+    else:
+        lines.append(f"🕐 *الوقت:* {time_range}")
+        if context.get("therapist_name"):
+            lines.append(f"💆 *المعالج/ة:* {context['therapist_name']}")
+        if context.get("service_name"):
+            lines.append(f"🧴 *الخدمة:* {context['service_name']}")
     if context.get("branch_name"):
         lines.append(f"📍 *الفرع:* {context['branch_name']}")
     if amount:
@@ -387,13 +445,22 @@ def _whatsapp_pending_payment_message_ar(
 def _sms_pending_payment_message_ar(
     context: dict, customer_name: str, payment_link: str
 ) -> str:
-    """Concise Arabic SMS for confirmed bookings requiring payment."""
+    """Concise Arabic SMS for confirmed bookings requiring payment.
+
+    For multi-session bookings shows session count instead of a single time.
+    """
     name = customer_name.split()[0] if customer_name else "عميلنا"
     date_str = context["appointment_date"]
-    time_str = context["appointment_time"]
     amount = context.get("total_amount") or ""
     currency = context.get("currency") or "KWD"
     amount_part = f" {amount} {currency}" if amount else ""
+    sessions: list[dict] = context.get("sessions") or []
+    if len(sessions) > 1:
+        return (
+            f"USHSPA: مرحباً {name}، تم تأكيد حجزك ({len(sessions)} جلسات) في {date_str}. "
+            f"يرجى إتمام الدفع{amount_part} لتأمين مواعيدك: {payment_link}"
+        )
+    time_str = context["appointment_time"]
     return (
         f"USHSPA: مرحباً {name}، تم تأكيد حجزك في {date_str} الساعة {time_str}. "
         f"يرجى إتمام الدفع{amount_part} لتأمين موعدك: {payment_link}"
@@ -529,6 +596,7 @@ class BookingConfirmedHandler:
                     payment_status=cache_payment_status,
                     correlation_id=correlation_id,
                     services=_cache_services(data),
+                    sessions=data.get("sessions"),
                     **(
                         {
                             "secondary_therapist_id": _sec_tid,

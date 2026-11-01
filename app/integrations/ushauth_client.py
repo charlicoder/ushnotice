@@ -121,6 +121,7 @@ class UshAuthClient:
         services: list[dict] | None = None,
         secondary_therapist_id: str | None = None,
         secondary_therapist_name: str | None = None,
+        sessions: list[dict] | None = None,
     ) -> dict:
         """Create an appointment cache record in ushauth on booking confirmation.
 
@@ -174,6 +175,8 @@ class UshAuthClient:
             payload["secondary_therapist_id"] = str(secondary_therapist_id)
             if secondary_therapist_name:
                 payload["secondary_therapist_name"] = str(secondary_therapist_name)
+        if sessions:
+            payload["sessions"] = sessions
 
         return await self._client.post(
             "/api/v1/create-appointment-cache/",
