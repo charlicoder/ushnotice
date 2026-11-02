@@ -62,12 +62,14 @@
 ## 🚀 Getting Started
 
 ### Prerequisites
+
 - Python 3.12+
 - PostgreSQL 15+
 - Redis 7+
 - AWS SQS Queue (or local simulator)
 
 ### Setup & Run
+
 ```bash
 # 1. Clone & create virtualenv
 python3.14 -m venv .venv
@@ -92,20 +94,32 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 pytest
 ```
 
+```
+Setup Instructions in Meta App Dashboard
+In the Meta App Dashboard > WhatsApp > Configuration > Webhook:
+Callback URL: https://<your-domain>/unotice/v1/webhooks/whatsapp (or direct host https://<your-domain>/v1/webhooks/whatsapp)
+Verify Token: Enter any secret string (e.g. ushspa_wa_webhook_token_2026) and set the same value in ushnotice/.env:
+env
+META_WA_VERIFY_TOKEN=ushspa_wa_webhook_token_2026
+META_WA_APP_SECRET=<Your Meta App Secret from App Settings > Basic>
+Click Verify and Save.
+Under Webhook fields, click Manage and subscribe to messages.
+```
+
 ---
 
 ## 📚 API Endpoints
 
 All dashboard endpoints require the `USHSPA-TOKEN` header.
 
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `/v1/health` | GET | Health and readiness check |
-| `/v1/ping` | GET | Liveness probe |
-| `/v1/notifications` | GET | List notifications (with filters & pagination) |
-| `/v1/notifications/{id}` | GET | View notification details, attempts, and history |
-| `/v1/notifications/{id}/resend` | POST | Resend notification in background |
-| `/v1/events` | GET | List received events |
-| `/v1/events/{id}` | GET | View event details |
-| `/v1/delivery-failures` | GET | List failed notifications |
-| `/v1/statistics` | GET | Aggregated delivery metrics |
+| Endpoint                        | Method | Description                                      |
+| :------------------------------ | :----- | :----------------------------------------------- |
+| `/v1/health`                    | GET    | Health and readiness check                       |
+| `/v1/ping`                      | GET    | Liveness probe                                   |
+| `/v1/notifications`             | GET    | List notifications (with filters & pagination)   |
+| `/v1/notifications/{id}`        | GET    | View notification details, attempts, and history |
+| `/v1/notifications/{id}/resend` | POST   | Resend notification in background                |
+| `/v1/events`                    | GET    | List received events                             |
+| `/v1/events/{id}`               | GET    | View event details                               |
+| `/v1/delivery-failures`         | GET    | List failed notifications                        |
+| `/v1/statistics`                | GET    | Aggregated delivery metrics                      |

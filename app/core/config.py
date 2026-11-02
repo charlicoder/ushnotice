@@ -143,6 +143,14 @@ class Settings(BaseSettings):
     META_WA_PHONE_NUMBER_ID: str = ""
     META_WA_ACCESS_TOKEN: SecretStr = SecretStr("")
     META_WA_API_VERSION: str = "v20.0"
+    META_WA_VERIFY_TOKEN: SecretStr = Field(
+        default=SecretStr(""),
+        description="Verify token for Meta WhatsApp webhook challenge verification.",
+    )
+    META_WA_APP_SECRET: SecretStr = Field(
+        default=SecretStr(""),
+        description="Meta App Secret for HMAC-SHA256 signature verification of webhook notifications.",
+    )
 
     # Active WhatsApp provider name
     WHATSAPP_PROVIDER: Literal["meta", "stub"] = "meta"

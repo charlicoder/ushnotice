@@ -17,7 +17,9 @@ services:
       # Mount source for hot-reload during development
       - ./app:/app/app
     networks:
-      - ushspa-network
+      ushspa-network:
+        aliases:
+          - ushnotice
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
       interval: 30s

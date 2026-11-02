@@ -27,7 +27,9 @@ services:
     env_file:
       - .env                           # Set WORKERS=2 (or more) for production
     networks:
-      - ushspa-network
+      ushspa-network:
+        aliases:
+          - ushnotice
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
       interval: 30s

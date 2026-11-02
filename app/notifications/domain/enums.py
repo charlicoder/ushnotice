@@ -25,6 +25,7 @@ class NotificationStatus(str, Enum):
     PROCESSING = "PROCESSING"
     SENT = "SENT"
     DELIVERED = "DELIVERED"
+    READ = "READ"
     FAILED = "FAILED"
     RETRYING = "RETRYING"
     CANCELLED = "CANCELLED"

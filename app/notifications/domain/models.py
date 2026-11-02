@@ -283,6 +283,7 @@ class NotificationAttempt(Base):
         Index("ix_notification_attempts_notification_id", "notification_id"),
         Index("ix_notification_attempts_provider", "provider"),
         Index("ix_notification_attempts_status", "status"),
+        Index("ix_notification_attempts_provider_message_id", "provider_message_id"),
     )
 
     def __repr__(self) -> str:
@@ -337,3 +338,35 @@ class ApiRequest(Base):
             f"<ApiRequest service={self.service!r} {self.method} {self.path!r} "
             f"status={self.status!r}>"
         )
+
+
+class InboundMessage(Base):
+    """Persisted record of inbound messages received from communication providers (e.g. Meta WhatsApp)."""
+
+    __tablename__ = "inbound_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False, default="whatsapp")
+    provider: Mapped[str] = mapped_column(String(50), nullable=False, default="meta")
+    provider_message_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    from_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    to_number_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    sender_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    message_type: Mapped[str] = mapped_column(String(50), nullable=False, default="text")
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    is_processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_now_kuwait
+    )
+
+    __table_args__ = (
+        Index("ix_inbound_messages_channel_received_at", "channel", "received_at"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<InboundMessage id={self.id!r} from={self.from_number!r} "
+            f"type={self.message_type!r}>"
+        )
+

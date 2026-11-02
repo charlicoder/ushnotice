@@ -33,6 +33,7 @@ from app.notifications.domain.models import (
     ApiRequest,
     Event,
     EventProcessing,
+    InboundMessage,
     Notification,
     NotificationAttempt,
     NotificationStatusHistory,
@@ -620,6 +621,15 @@ class NotificationAttemptRepository:
         )
         return result.scalar_one()
 
+    async def get_by_provider_message_id(self, provider_message_id: str) -> NotificationAttempt | None:
+        """Look up a notification attempt by provider message ID (e.g. Meta WhatsApp wamid)."""
+        result = await self._db.execute(
+            select(NotificationAttempt)
+            .where(NotificationAttempt.provider_message_id == provider_message_id)
+            .order_by(NotificationAttempt.started_at.desc())
+        )
+        return result.scalars().first()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ApiRequestRepository
@@ -688,3 +698,56 @@ class ApiRequestRepository:
         req.completed_at = _utcnow()
         req.latency_ms = latency_ms
         await self._db.flush()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# InboundMessageRepository
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class InboundMessageRepository:
+    """Data-access object for the ``inbound_messages`` table."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def create(
+        self,
+        *,
+        provider_message_id: str,
+        from_number: str,
+        channel: str = "whatsapp",
+        provider: str = "meta",
+        to_number_id: str | None = None,
+        sender_name: str | None = None,
+        message_type: str = "text",
+        body: str | None = None,
+        payload: dict | None = None,
+    ) -> InboundMessage:
+        """Persist an inbound message idempotently."""
+        existing = await self.get_by_provider_message_id(provider_message_id)
+        if existing:
+            return existing
+
+        message = InboundMessage(
+            provider_message_id=provider_message_id,
+            from_number=from_number,
+            channel=channel,
+            provider=provider,
+            to_number_id=to_number_id,
+            sender_name=sender_name,
+            message_type=message_type,
+            body=body,
+            payload=payload,
+        )
+        self._db.add(message)
+        await self._db.flush()
+        return message
+
+    async def get_by_provider_message_id(self, provider_message_id: str) -> InboundMessage | None:
+        """Look up an inbound message by provider message ID."""
+        result = await self._db.execute(
+            select(InboundMessage).where(InboundMessage.provider_message_id == provider_message_id)
+        )
+        return result.scalars().first()
+

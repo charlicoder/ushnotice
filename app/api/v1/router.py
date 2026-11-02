@@ -10,6 +10,7 @@ from app.api.v1.events import router as events_router
 from app.api.v1.health import router as health_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.statistics import router as statistics_router
+from app.api.v1.webhooks.whatsapp import router as whatsapp_webhooks_router
 
 api_v1_router = APIRouter(prefix="/v1")
 
@@ -19,3 +20,4 @@ api_v1_router.include_router(notifications_router)
 api_v1_router.include_router(events_router)
 api_v1_router.include_router(delivery_failures_router)
 api_v1_router.include_router(statistics_router)
+api_v1_router.include_router(whatsapp_webhooks_router)

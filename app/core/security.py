@@ -11,6 +11,8 @@ It is loaded from :class:`~app.core.config.Settings` and NEVER logged.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import secrets
 from typing import Annotated
 
@@ -65,3 +67,35 @@ async def require_service_token(
 
 # Type alias for clean FastAPI dependency injection.
 RequireServiceAuth = Annotated[None, Depends(require_service_token)]
+
+
+def verify_meta_wa_signature(
+    raw_body: bytes,
+    signature_header: str | None,
+    app_secret: str,
+) -> bool:
+    """Verify Meta WhatsApp Webhook X-Hub-Signature-256 header.
+
+    Meta sends:
+        X-Hub-Signature-256: sha256=<hex_hmac>
+    where <hex_hmac> is the HMAC-SHA256 signature of the raw request payload
+    using the Meta App Secret.
+
+    Returns:
+        True if signature matches (or if app_secret is not set), False otherwise.
+    """
+    if not app_secret:
+        return True
+
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+
+    received_sig = signature_header.split("sha256=", 1)[1].strip()
+    expected_sig = hmac.new(
+        key=app_secret.encode("utf-8"),
+        msg=raw_body,
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+
+    return secrets.compare_digest(received_sig, expected_sig)
+
