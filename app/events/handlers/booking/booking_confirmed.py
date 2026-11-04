@@ -811,13 +811,14 @@ class BookingConfirmedHandler:
                     normalised_gateway = None
 
                 # Normalise payment_provider to spec values: MyFatoorah | DirectLink | Deema | Other
-                _raw_provider = str(
+                _raw_provider_orig = str(
                     data.get("payment_provider")
                     or raw_payment_data.get("provider")
                     or raw_payment_data.get("payment_provider")
                     or raw_payment_data.get("PaymentProvider")
                     or "myfatoorah"
-                ).lower()
+                )
+                _raw_provider = _raw_provider_orig.lower()
                 if "fatoorah" in _raw_provider:
                     payment_provider = "MyFatoorah"
                 elif "directlink" in _raw_provider or "direct" in _raw_provider:
@@ -827,11 +828,13 @@ class BookingConfirmedHandler:
                 elif "paymentlink" in _raw_provider:
                     payment_provider = "PaymentLink"
                 elif _raw_provider:
-                    payment_provider = "Other"
+                    # keep the original label (e.g. "KNET Card", "Boubyan Link"): ushbooknpay maps it to
+                    # the canonical provider instead of losing it as "Other"
+                    payment_provider = _raw_provider_orig
                 else:
                     payment_provider = "MyFatoorah"
 
-                # Normalise payment_through: ushspa | ushdesk | other
+                # Normalise payment_through: ushspa | ushweb | ushdesk | other
                 _raw_through = str(
                     data.get("payment_through")
                     or raw_payment_data.get("payment_through")
@@ -839,7 +842,9 @@ class BookingConfirmedHandler:
                 ).lower()
                 if "desk" in _raw_through:
                     payment_through = "ushdesk"
-                elif "ushspa" in _raw_through:
+                elif "web" in _raw_through:
+                    payment_through = "ushweb"
+                elif "ushspa" in _raw_through or "app" in _raw_through or "mobile" in _raw_through:
                     payment_through = "ushspa"
                 else:
                     payment_through = "other"

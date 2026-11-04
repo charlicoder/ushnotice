@@ -231,7 +231,7 @@ class GiftPurchaseCompletedHandler:
             logger.info("gift_purchase_completed_sender_no_phone", gift_id=gift_id)
 
         # ── Notify RECIPIENT ──────────────────────────────────────────────
-        if payment_through != "desk":
+        if payment_through not in ("desk", "ushdesk"):
             recipient_phone = gctx["recipient_phone"]
             recipient_name = gctx["recipient_name"]
 

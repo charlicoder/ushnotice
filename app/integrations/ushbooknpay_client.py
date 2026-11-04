@@ -387,7 +387,8 @@ class UshBookNPayClient:
         elif "deema" in _prov:
             normalised_provider = "Deema"
         elif _prov:
-            normalised_provider = "Other"
+            # keep the original label ("KNET Card", "Boubyan Link"…): ushbooknpay maps it to the canonical provider
+            normalised_provider = payment_provider
         else:
             normalised_provider = "Other"
 
@@ -411,8 +412,8 @@ class UshBookNPayClient:
         _type = (payment_type or "").strip().lower()
         if "desk" in _type:
             normalised_through = "desk"
-        elif "ushspa" in _type:
-            normalised_through = "ushspa"
+        elif "web" in _type:
+            normalised_through = "ushweb"
         else:
             normalised_through = "ushspa"
 
