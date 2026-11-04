@@ -173,6 +173,15 @@ def _build_voucher_context(data: dict) -> dict:
     raw_recipient = form_to or form_rec_full_name or generic_rec
     recipient_name = raw_recipient or "Valued Customer"
     service_name = service_data.get("name") or data.get("service_name") or "Spa Experience"
+    # Multi-service vouchers: show every gifted service name
+    _svc_names = [
+        str(((e or {}).get("service_data") or {}).get("name") or "").strip()
+        for e in (data.get("services") or [])
+        if isinstance(e, dict)
+    ]
+    _svc_names = [n for n in _svc_names if n]
+    if len(_svc_names) > 1:
+        service_name = " + ".join(_svc_names)
     branch_name = branch_data.get("name") or data.get("branch_name") or "USHSPA"
 
     sender_language = (

@@ -53,6 +53,15 @@ def _build_redeemed_context(data: dict) -> dict:
         username = data.get("username") or raw_recipient_name.split()[0]
 
     service_name = service_data.get("name") or data.get("service_name") or "Spa Experience"
+    # Multi-service vouchers: show every gifted service name
+    _svc_names = [
+        str(((e or {}).get("service_data") or {}).get("name") or "").strip()
+        for e in (data.get("services") or [])
+        if isinstance(e, dict)
+    ]
+    _svc_names = [n for n in _svc_names if n]
+    if len(_svc_names) > 1:
+        service_name = " + ".join(_svc_names)
     branch_name = branch_data.get("name") or data.get("branch_name") or "USHSPA"
     branch_location = (
         branch_data.get("location")
