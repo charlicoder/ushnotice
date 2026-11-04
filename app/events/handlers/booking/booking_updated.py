@@ -275,6 +275,11 @@ class BookingUpdatedHandler:
         branch_id: str | None = data.get("branch_id")
         service_arrangement_id: str | None = data.get("service_arrangement_id")
 
+        # Parked bookings have released their slot (no appointment cache rows): nothing to sync
+        if raw_status == "parked":
+            logger.info("booking_updated_skipped_parked", booking_id=booking_id, event_id=correlation_id)
+            return
+
         # Intermediate statuses checked_in and in_progress do not update appointment_cache
         if raw_status in ("checked_in", "checkedin", "in_progress", "inprogress"):
             logger.info(
@@ -380,6 +385,15 @@ class BookingUpdatedHandler:
                 event_id=correlation_id,
             )
         except Exception as exc:
+            if getattr(exc, "status_code", None) == 404:
+                # No cache rows yet (e.g. a parked booking being re-activated: BookingConfirmed
+                # recreates them) – not an error for this handler.
+                logger.warning(
+                    "appointment_cache_not_found_on_booking_updated_event",
+                    booking_id=booking_id,
+                    event_id=correlation_id,
+                )
+                return
             logger.error(
                 "appointment_cache_update_failed_on_booking_updated_event",
                 booking_id=booking_id,
@@ -461,6 +475,12 @@ class BookingUpdatedHandler:
         # Completed bookings: appointment cache updated to completed, skip updated/rescheduled notifications
         if cache_status == "completed" or raw_status == "completed":
             logger.info("booking_completed_cache_updated_successfully", booking_id=booking_id)
+            return
+
+        # Plain booking edits (booking.updated) never notify the customer by SMS/WhatsApp;
+        # the appointment cache above is still kept in sync.
+        if envelope.event_type == "booking.updated":
+            logger.info("booking_updated_notification_skipped_by_policy", booking_id=booking_id)
             return
 
         # Check payment status: only send customer SMS/WhatsApp when payment_status=success
