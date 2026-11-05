@@ -548,7 +548,7 @@ class BookingConfirmedHandler:
                 # ushauth BookingType only accepts: branch | home | leave
                 # Map ushbooknpay-specific "loyalty" → "branch" (loyalty bookings are branch visits)
                 _USHAUTH_VALID_BOOKING_TYPES = {"branch", "home", "leave"}
-                _cache_booking_type: str = booking_type if booking_type in _USHAUTH_VALID_BOOKING_TYPES else "branch"
+                _cache_booking_type: str = "home" if booking_type == "home_service" else (booking_type if booking_type in _USHAUTH_VALID_BOOKING_TYPES else "branch")
 
                 _bc_cache_payload: dict = {
                     "service_arrangement_id": str(data.get("service_arrangement_id") or "") or None,

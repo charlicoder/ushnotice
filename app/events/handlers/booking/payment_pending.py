@@ -61,7 +61,7 @@ class BookingPaymentPendingHandler:
         # ushauth BookingType only accepts: branch | home | leave
         _USHAUTH_VALID_BOOKING_TYPES = {"branch", "home", "leave"}
         _cache_booking_type: str = (
-            booking_type if booking_type in _USHAUTH_VALID_BOOKING_TYPES else "branch"
+            "home" if booking_type == "home_service" else (booking_type if booking_type in _USHAUTH_VALID_BOOKING_TYPES else "branch")
         )
 
         if booking_id:

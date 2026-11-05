@@ -369,6 +369,7 @@ class BookingUpdatedHandler:
                 correlation_id=correlation_id,
                 # Only sent for multi-service bookings (keeps the legacy call shape intact)
                 **({"services": _svcs} if (_svcs := _cache_services(data)) else {}),
+                **({"sessions": _sessions} if (_sessions := data.get("sessions")) else {}),
                 **(
                     {
                         "secondary_therapist_id": _sec_tid,
