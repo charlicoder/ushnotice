@@ -13,6 +13,7 @@ actual booking payment state so the schedule view reflects correct data.
 """
 from __future__ import annotations
 
+from app.common.course_redemption import is_course_redemption
 from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
@@ -97,7 +98,13 @@ class BookingPaymentStatusSuccessHandler:
                 or bool(invoice_data.get("voucher_id"))
                 or str(invoice_data.get("payment_method") or "").strip().lower() in ("voucher", "gift_voucher")
             )
-            if not is_voucher_redemption:
+            if is_course_redemption(invoice_data):
+                logger.info(
+                    "booking_payment_status_success_invoice_skipped_course_redemption",
+                    booking_id=booking_id,
+                    message="Skipping invoice creation for course redemption; course was invoiced at activation.",
+                )
+            elif not is_voucher_redemption:
                 await trigger_booking_invoice(invoice_data, correlation_id=correlation_id)
             else:
                 logger.info(

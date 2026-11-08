@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.common.course_redemption import is_course_redemption
 from app.core.logging import get_logger
 from app.events.handlers.base import HandlerContext
 from app.events.handlers.booking.booking_confirmed import BookingConfirmedHandler
@@ -43,7 +44,21 @@ class PaymentLinkPaidHandler:
             correlation_id=correlation_id,
         )
 
-        if target_type == "booking" or booking_id:
+        if target_type == "course_subscription" or is_course_redemption(data.get("booking") or {}):
+            # Course-subscription links are settled entirely in ushbooknpay (Payment,
+            # invoice, activation) which then publishes ``course_subscription.activated``
+            # — the customer notification is sent by that handler. A course
+            # redemption booking is prepaid and must never get a payment/invoice here.
+            # NOTE: ``booking_id`` falls back to ``target_id`` above, so this guard
+            # must run before the booking branch.
+            logger.info(
+                "payment_link_paid_course_subscription_skipped",
+                target_type=target_type,
+                target_id=data.get("target_id"),
+                payment_link_id=data.get("payment_link_id"),
+                correlation_id=correlation_id,
+            )
+        elif target_type == "booking" or booking_id:
             await self._process_booking_payment(data, envelope, ctx, correlation_id)
         else:
             logger.info("payment_link_paid_non_booking_target", target_type=target_type, data=data)

@@ -18,10 +18,14 @@ On a cancelled booking this handler:
        refund is completed by staff from ushdesk.
   4. For unpaid bookings with payment link: cancel the payment link.
   5. Sync booking status in ushbooknpay (always sends status=cancelled).
+
+Course redemption bookings (prepaid by a course subscription) skip the loyalty
+reversal and the refund request; the cache cleanup and status sync still run.
 """
 
 from __future__ import annotations
 
+from app.common.course_redemption import is_course_redemption
 from app.core.exceptions import ServiceClientError
 from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
@@ -66,9 +70,19 @@ class BookingCancelledHandler:
             or bool(data.get("loyalty_data", {}).get("reward_id"))
         )
         is_eligible_for_loyalty: bool = bool(data.get("is_eligible_for_loyalty"))
+        # Course redemption bookings are prepaid by a course subscription: they never
+        # earned loyalty points and are never refunded (the session is released in
+        # ushbooknpay instead) — skip every money-related step for them.
+        _is_course_redemption: bool = is_course_redemption(data)
         if _is_loyalty_redemption:
             logger.info(
                 "booking_cancelled_loyalty_reversal_skipped_loyalty_redemption",
+                booking_id=booking_id,
+                customer_id=customer_id,
+            )
+        elif _is_course_redemption:
+            logger.info(
+                "booking_cancelled_loyalty_reversal_skipped_course_redemption",
                 booking_id=booking_id,
                 customer_id=customer_id,
             )
@@ -253,7 +267,10 @@ class BookingCancelledHandler:
         # If refund was requested: payment_status is "refund_requested".
         # If no refund requested: payment_status stays "success".
         # For UNPAID bookings: set payment_status to "cancelled".
-        if raw_payment_status == "refund_requested":
+        # For COURSE redemptions: nothing is refunded — payment_status stays "success".
+        if _is_course_redemption:
+            sync_payment_status = "success"
+        elif raw_payment_status == "refund_requested":
             sync_payment_status = "refund_requested"
         elif is_paid_booking:
             sync_payment_status = raw_payment_status or "success"
@@ -310,7 +327,13 @@ class BookingCancelledHandler:
             or refund_required
             or bool(data.get("refund_requested"))
         )
-        if is_refund_requested and booking_id:
+        if is_refund_requested and booking_id and _is_course_redemption:
+            logger.info(
+                "booking_cancelled_refund_request_skipped_course_redemption",
+                booking_id=booking_id,
+                correlation_id=correlation_id,
+            )
+        elif is_refund_requested and booking_id:
             canc_fee = data.get("cancellation_fee") or 0
             refund_amt = data.get("refund_amount") or data.get("refundable_amount")
             invoice_num = data.get("invoice_number")

@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import Any
 from dataclasses import replace
 
+from app.common.course_redemption import course_redemption_info, is_course_redemption
 from app.core.logging import get_logger
 from app.events.handlers.booking._services import _cache_services, service_names
 from app.events.handlers.booking._session_formatters import (
@@ -128,7 +129,23 @@ def _build_booking_context(data: dict) -> dict:
         or ""
     )
 
+    # Course redemption: the session was prepaid with the course, so never show
+    # an amount ("Total Paid: 0") and tag the service with the course session.
+    course_ctx: dict = {}
+    if is_course_redemption(data):
+        course_ctx = course_redemption_info(data)
+        total_amount = ""
+        course_label = course_ctx["course_name"]
+        if course_label and course_ctx["course_session_number"] and course_ctx["course_total_sessions"]:
+            course_label = (
+                f"{course_label} ({course_ctx['course_session_number']}/{course_ctx['course_total_sessions']})"
+            )
+        if course_label:
+            service_name = f"{service_name} — {course_label}" if service_name else course_label
+
     return {
+        **course_ctx,
+        "is_course_redemption": bool(course_ctx),
         "booking_id": data.get("booking_id") or "",
         "booking_reference": booking_reference,
         "booking_number": data.get("booking_number") or "",
@@ -217,9 +234,10 @@ def _sms_message(context: dict, customer_name: str) -> str:
             f"Hi {name}, your {len(sessions)}-session booking is CONFIRMED for {date_str}.{ref_part} See you soon!"
         )
     time_str = context["appointment_time"]
+    course_part = _course_sms_part_en(context)
     return (
         f"USHSPA:\n"
-        f"Hi {name}, your booking is CONFIRMED for {date_str} at {time_str}.{ref_part} See you soon!"
+        f"Hi {name}, your booking is CONFIRMED for {date_str} at {time_str}.{ref_part}{course_part} See you soon!"
     )
 
 
@@ -367,6 +385,28 @@ def _whatsapp_message_ar(context: dict, customer_name: str) -> str:
     return "\n".join(lines)
 
 
+def _course_sms_part_ar(context: dict) -> str:
+    """Arabic course-session suffix for course redemption bookings ('' otherwise)."""
+    if not context.get("is_course_redemption") or not context.get("course_name"):
+        return ""
+    session_no = context.get("course_session_number")
+    total = context.get("course_total_sessions")
+    if session_no and total:
+        return f" جلسة {session_no}/{total} من باقة {context['course_name']}."
+    return f" باقة {context['course_name']}."
+
+
+def _course_sms_part_en(context: dict) -> str:
+    """English course-session suffix for course redemption bookings ('' otherwise)."""
+    if not context.get("is_course_redemption") or not context.get("course_name"):
+        return ""
+    session_no = context.get("course_session_number")
+    total = context.get("course_total_sessions")
+    if session_no and total:
+        return f" Session {session_no}/{total} of {context['course_name']}."
+    return f" Course: {context['course_name']}."
+
+
 def _sms_message_ar(context: dict, customer_name: str) -> str:
     """Compose a concise Arabic SMS confirmation message.
 
@@ -383,9 +423,10 @@ def _sms_message_ar(context: dict, customer_name: str) -> str:
             f"مرحباً {name}، تم تأكيد حجزك ({len(sessions)} جلسات) في {date_str}.{ref_part} نتشرف بزيارتكم!"
         )
     time_str = context["appointment_time"]
+    course_part = _course_sms_part_ar(context)
     return (
         f"USHSPA:\n"
-        f"مرحباً {name}، تم تأكيد حجزك في {date_str} الساعة {time_str}.{ref_part} نتشرف بزيارتكم!"
+        f"مرحباً {name}، تم تأكيد حجزك في {date_str} الساعة {time_str}.{ref_part}{course_part} نتشرف بزيارتكم!"
     )
 
 
@@ -634,7 +675,10 @@ class BookingConfirmedHandler:
         # time — creating it again here would produce a duplicate.
         payment_type: str = str(data.get("payment_type") or "").lower()
         _is_gift_voucher: bool = payment_type == "gift_voucher"
-        if booking_id and is_paid and not _is_gift_voucher:
+        # Course redemptions are prepaid by the course subscription (payment and
+        # invoice were created at subscription activation) — treat like vouchers.
+        _is_course_redemption: bool = is_course_redemption(data)
+        if booking_id and is_paid and not _is_gift_voucher and not _is_course_redemption:
             try:
                 booknpay_client = UshBookNPayClient()
                 pricing: dict = data.get("pricing") or {}
@@ -1068,6 +1112,15 @@ class BookingConfirmedHandler:
                 booking_id=booking_id,
                 customer_id=customer_id,
             )
+        elif _is_course_redemption:
+            # The course subscription was paid (Payment row created) at activation
+            # time in ushbooknpay — a redemption booking never creates a payment.
+            logger.info(
+                "booking_confirmed_payment_record_skipped_course_redemption",
+                booking_id=booking_id,
+                customer_id=customer_id,
+                course_subscription_id=str(data.get("course_subscription_id") or ""),
+            )
 
         # ── 3. Credit loyalty points (if eligible) ────────────────────────────
         # Only credit when:
@@ -1100,6 +1153,13 @@ class BookingConfirmedHandler:
         elif _is_gift_voucher:
             logger.info(
                 "booking_confirmed_loyalty_credit_skipped_gift_voucher",
+                booking_id=booking_id,
+                customer_id=customer_id,
+            )
+        elif _is_course_redemption:
+            # No loyalty points for course purchases or redemption bookings.
+            logger.info(
+                "booking_confirmed_loyalty_credit_skipped_course_redemption",
                 booking_id=booking_id,
                 customer_id=customer_id,
             )
@@ -1169,13 +1229,19 @@ class BookingConfirmedHandler:
             or bool(data.get("voucher_id"))
             or str(data.get("payment_method") or "").strip().lower() in ("voucher", "gift_voucher")
         )
-        if booking_id and is_paid and not is_voucher_redemption:
+        if booking_id and is_paid and not is_voucher_redemption and not _is_course_redemption:
             await trigger_booking_invoice(data, correlation_id=correlation_id)
         elif is_voucher_redemption:
             logger.info(
                 "booking_invoice_skipped_gift_voucher",
                 booking_id=booking_id,
                 message="Invoice creation skipped because booking is redeemed via gift voucher (already invoiced at purchase).",
+            )
+        elif _is_course_redemption:
+            logger.info(
+                "booking_invoice_skipped_course_redemption",
+                booking_id=booking_id,
+                message="Invoice creation skipped because booking redeems a course session (course invoiced at activation).",
             )
         elif booking_id and not is_paid:
             logger.info(

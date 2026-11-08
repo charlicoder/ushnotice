@@ -20,6 +20,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from app.common.course_redemption import is_course_redemption
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.integrations.ushanr_client import UshanrClient
@@ -135,6 +136,17 @@ async def trigger_booking_invoice(
             payment_method=p_method,
             correlation_id=correlation_id,
             message="Skipping invoice creation for gift voucher redemption; voucher was already invoiced at purchase time.",
+        )
+        return
+
+    # Skip invoice generation for course redemptions (course invoiced at subscription activation)
+    if is_course_redemption(data):
+        logger.info(
+            "booking_invoice_skipped_course_redemption",
+            booking_id=booking_id,
+            course_subscription_id=str(data.get("course_subscription_id") or ""),
+            correlation_id=correlation_id,
+            message="Skipping invoice creation for course redemption; course was invoiced at activation.",
         )
         return
 

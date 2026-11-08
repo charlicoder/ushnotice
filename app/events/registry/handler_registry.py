@@ -243,6 +243,47 @@ def build_default_registry() -> HandlerRegistry:
             _alias.event_type = _alias_type
             registry.register(_alias)
 
+    # ── Course subscription handlers ──────────────────────────────────────────
+    # Published by ushbooknpay via its transactional outbox (course contract §F).
+    from app.events.handlers.course.course_subscription_activated import CourseSubscriptionActivatedHandler
+    from app.events.handlers.course.course_subscription_created import CourseSubscriptionCreatedHandler
+    from app.events.handlers.course.course_subscription_expired import CourseSubscriptionExpiredHandler
+    from app.events.handlers.course.course_subscription_noop import (
+        COURSE_NOOP_EVENT_TYPES,
+        CourseSubscriptionNoopHandler,
+    )
+    from app.events.handlers.course.course_subscription_refunded import CourseSubscriptionRefundedHandler
+    from app.events.handlers.course.course_subscription_session_consumed import (
+        CourseSubscriptionSessionConsumedHandler,
+    )
+
+    _course_handlers: list[EventHandler] = [
+        CourseSubscriptionCreatedHandler(),
+        CourseSubscriptionActivatedHandler(),
+        CourseSubscriptionSessionConsumedHandler(),
+        CourseSubscriptionExpiredHandler(),
+        CourseSubscriptionRefundedHandler(),
+    ]
+    for _noop_type in COURSE_NOOP_EVENT_TYPES:
+        _noop = CourseSubscriptionNoopHandler()
+        _noop.event_type = _noop_type
+        _course_handlers.append(_noop)
+
+    for _h in _course_handlers:
+        registry.register(_h)
+        _dot_type = _h.event_type
+        # Underscore alias (e.g. "course_subscription_activated") and the alias
+        # derived from event_name ("CourseSubscription.Activated" →
+        # "coursesubscription_activated") used when a producer omits event_type.
+        for _alias_type in (
+            _dot_type.replace(".", "_"),
+            _dot_type.replace("course_subscription.", "coursesubscription_"),
+        ):
+            if _alias_type != _dot_type and not registry.has_handler(_alias_type):
+                _alias = _h.__class__()
+                _alias.event_type = _alias_type
+                registry.register(_alias)
+
     # ── Shop handlers ─────────────────────────────────────────────────────────
     from app.events.handlers.shop.shop_order_created import ShopOrderCreatedHandler
 
