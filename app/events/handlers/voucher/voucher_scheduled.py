@@ -163,7 +163,15 @@ class VoucherScheduledHandler(EventHandler):
                 # ── Status & classification ────────────────────────────────
                 "status": "success",
                 "payment_for": "gift_voucher",
-                "payment_provider": str(data.get("payment_provider") or "MyFatoorah"),
+                "payment_provider": str(
+                    data.get("payment_provider")
+                    or (
+                        "MyFatoorah"
+                        if str(data.get("payment_through") or "ushspa").strip().lower()
+                        in ("ushspa", "ushweb", "app", "web", "mobile")
+                        else ""
+                    )
+                ) or None,
                 "payment_through": str(data.get("payment_through") or "ushspa"),
                 "payment_gateway": normalised_gw,
                 "payment_method": str(

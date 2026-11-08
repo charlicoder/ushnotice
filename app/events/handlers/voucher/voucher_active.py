@@ -657,7 +657,18 @@ class VoucherActiveHandler:
                 # ── Status & classification ────────────────────────────────
                 "status": "success",
                 "payment_for": "gift_voucher",
-                "payment_provider": str(data.get("payment_provider") or "MyFatoorah"),
+                # MyFatoorah is the implicit provider only for the customer-facing channels
+                # (USHWeb / USHSpa). Never guess it for USHDesk: staff may have taken the
+                # payment on the branch KNET POS, Deema or Boubyan link.
+                "payment_provider": str(
+                    data.get("payment_provider")
+                    or (
+                        "MyFatoorah"
+                        if str(data.get("payment_through") or "ushspa").strip().lower()
+                        in ("ushspa", "ushweb", "app", "web", "mobile")
+                        else ""
+                    )
+                ) or None,
                 "payment_through": str(data.get("payment_through") or "ushspa"),
                 "payment_gateway": normalised_gw,
                 "payment_method": str(
