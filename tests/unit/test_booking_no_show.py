@@ -86,6 +86,7 @@ def test_completed_keeps_cache_via_updated_handler_not_deletion():
     registry = build_default_registry()
     for key in ("booking.completed", "booking_completed"):
         handlers = registry.resolve(key)
-        assert len(handlers) == 1
-        assert isinstance(handlers[0], BookingUpdatedHandler)
+        # BookingUpdatedHandler keeps the cache; BookingCompletedFeedbackHandler sends the feedback link.
+        assert any(isinstance(h, BookingUpdatedHandler) for h in handlers)
+        assert not any(isinstance(h, BookingNoShowHandler) for h in handlers)
 

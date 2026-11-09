@@ -11,6 +11,7 @@ Public interface
   UshanrClient.ensure_partner(...)      → partner_id (UUID str)
   UshanrClient.create_invoice(...)      → dict with invoice_id, invoice_name
   UshanrClient.create_credit_note(...)  → dict with invoice_id, invoice_name
+  UshanrClient.create_feedback_link(...) → dict with feedback_url, status
   UshanrClient.aclose()
 """
 from __future__ import annotations
@@ -304,6 +305,15 @@ class UshanrClient:
             body["record_refund_payment"] = True
 
         return await self._post("/api/v1/internal/invoices/credit-note/", body)
+
+    async def create_feedback_link(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Create (or return the existing) customer feedback link of a booking.
+
+        Returns the link dict: feedback_url, status ("pending" | "submitted"), created, ...
+        """
+        result = await self._post("/api/v1/internal/feedback-links/", body)
+        data = result.get("data") if isinstance(result, dict) else None
+        return data if isinstance(data, dict) else result
 
     async def aclose(self) -> None:
         """Close the underlying HTTPX client."""

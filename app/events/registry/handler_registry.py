@@ -198,6 +198,14 @@ def build_default_registry() -> HandlerRegistry:
             _extra_handler.event_type = _extra_key
             registry.register(_extra_handler)
 
+    # Booking completed → create the feedback link and send it (WhatsApp, SMS only as fallback).
+    from app.events.handlers.booking.booking_completed_feedback import BookingCompletedFeedbackHandler
+
+    for _fb_key in ("booking.completed", "booking_completed"):
+        _fb_handler = BookingCompletedFeedbackHandler()
+        _fb_handler.event_type = _fb_key
+        registry.register(_fb_handler)
+
 
     # ── Payment handlers ──────────────────────────────────────────────────────
     from app.events.handlers.payment.payment_success import PaymentSuccessHandler
