@@ -22,20 +22,6 @@ def _req(event_id: str = "evt-1", voucher_id: str = "voucher-1") -> Notification
     )
 
 
-class _FakeRedis:
-    def __init__(self):
-        self.store: dict[str, str] = {}
-
-    async def set(self, key, value, nx=False, ex=None):
-        if nx and key in self.store:
-            return None
-        self.store[key] = value
-        return True
-
-    async def delete(self, key):
-        self.store.pop(key, None)
-
-
 def _sent_notification() -> Notification:
     return Notification(
         event_id="evt-1", channel="SMS", recipient="x", status=NotificationStatus.SENT.value
@@ -45,10 +31,9 @@ def _sent_notification() -> Notification:
 @pytest.mark.asyncio
 async def test_redelivered_event_sends_sms_only_once():
     svc = NotificationService(MagicMock())
-    redis = _FakeRedis()
     impl = AsyncMock(return_value=_sent_notification())
 
-    with patch("app.core.redis.get_redis", return_value=redis), patch.object(svc, "_send_impl", impl):
+    with patch.object(svc, "_send_impl", impl):
         first = await svc.send(_req())
         second = await svc.send(_req())  # redelivery of the same event
         third = await svc.send(_req(event_id="evt-2"))  # re-published under a new event_id
@@ -61,11 +46,10 @@ async def test_redelivered_event_sends_sms_only_once():
 @pytest.mark.asyncio
 async def test_failed_send_releases_claim_so_retry_can_resend():
     svc = NotificationService(MagicMock())
-    redis = _FakeRedis()
     failed = Notification(event_id="evt-1", channel="SMS", recipient="x", status=NotificationStatus.FAILED.value)
     impl = AsyncMock(side_effect=[failed, _sent_notification()])
 
-    with patch("app.core.redis.get_redis", return_value=redis), patch.object(svc, "_send_impl", impl):
+    with patch.object(svc, "_send_impl", impl):
         await svc.send(_req())
         await svc.send(_req())
 
@@ -73,12 +57,25 @@ async def test_failed_send_releases_claim_so_retry_can_resend():
 
 
 @pytest.mark.asyncio
-async def test_sends_normally_when_redis_unavailable():
-    svc = NotificationService(MagicMock())
+async def test_db_backed_dedup_suppresses_already_sent_notification(handler_context):
+    # Create an already-SENT notification in the database
+    n = await handler_context.notification_repo.create(
+        event_id="evt-db-1",
+        channel=NotificationChannel.SMS.value,
+        recipient="+96541028985",
+        template_name="voucher/active_recipient_sms",
+        booking_id="voucher-db-1",
+    )
+    await handler_context.notification_repo.update_status(n, status=NotificationStatus.SENT)
+
+    # Clear in-memory claims to simulate a fresh process/worker restart
+    NotificationService.clear_dedup_claims()
+
+    svc = NotificationService(handler_context)
     impl = AsyncMock(return_value=_sent_notification())
 
-    with patch("app.core.redis.get_redis", side_effect=RuntimeError("no redis")), patch.object(svc, "_send_impl", impl):
-        await svc.send(_req())
-        await svc.send(_req())
+    with patch.object(svc, "_send_impl", impl):
+        res = await svc.send(_req(event_id="evt-db-2", voucher_id="voucher-db-1"))
 
-    assert impl.await_count == 2
+    assert impl.await_count == 0
+    assert res.status == NotificationStatus.SENT.value

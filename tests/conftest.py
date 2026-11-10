@@ -19,7 +19,6 @@ os.environ["SMS_PROVIDER"] = "stub"
 os.environ["WHATSAPP_PROVIDER"] = "stub"
 os.environ["EMAIL_PROVIDER"] = "stub"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
-os.environ["REDIS_URL"] = "redis://localhost:6379/15"
 
 from app.core.config import get_settings
 from app.core.database import Base, get_db
@@ -27,6 +26,7 @@ from app.events.handlers.base import HandlerContext
 from app.events.registry.handler_registry import build_default_registry
 from app.events.router import EventRouter
 from app.main import create_app
+from app.notifications.application.notification_service import NotificationService
 from app.notifications.infrastructure.repositories import (
     ApiRequestRepository,
     EventProcessingRepository,
@@ -34,6 +34,12 @@ from app.notifications.infrastructure.repositories import (
     NotificationAttemptRepository,
     NotificationRepository,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_notification_dedup_claims() -> None:
+    """Ensure in-memory deduplication claims do not leak across test cases."""
+    NotificationService.clear_dedup_claims()
 
 
 @pytest.fixture(scope="session")
@@ -87,12 +93,7 @@ async def async_client(test_db_session: AsyncSession) -> AsyncGenerator[AsyncCli
 
     app.dependency_overrides[get_db] = _override_get_db
 
-    # Mock Redis health check
-    with patch("app.api.v1.health.redis_health_check", AsyncMock(return_value=True)), \
-         patch("app.core.redis.redis_health_check", AsyncMock(return_value=True)), \
-         patch("app.core.redis.init_redis", AsyncMock()), \
-         patch("app.core.redis.close_redis", AsyncMock()), \
-         patch("app.events.consumer.sqs_consumer.SQSConsumer.start", AsyncMock()), \
+    with patch("app.events.consumer.sqs_consumer.SQSConsumer.start", AsyncMock()), \
          patch("app.events.consumer.sqs_consumer.SQSConsumer.stop", AsyncMock()):
 
         transport = ASGITransport(app=app)

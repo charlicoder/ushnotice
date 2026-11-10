@@ -44,14 +44,6 @@ class Settings(BaseSettings):
     DATABASE_MAX_OVERFLOW: int = 20
     DATABASE_POOL_TIMEOUT: int = 30
 
-    # ── Redis ─────────────────────────────────────────────────────────────────
-    REDIS_URL: str = Field(
-        default="redis://localhost:6379/2",
-        description="Redis connection URL.",
-    )
-    REDIS_MAX_CONNECTIONS: int = 20
-    REDIS_SOCKET_TIMEOUT: int = 5
-
     # ── Security ──────────────────────────────────────────────────────────────
     USHSPA_TOKEN: SecretStr = Field(
         description="Inter-service application token. NEVER log this value.",
@@ -196,17 +188,6 @@ class Settings(BaseSettings):
     NOTIFICATION_MAX_RETRIES: int = 3
     NOTIFICATION_RETRY_BASE_DELAY: float = 2.0  # seconds (exponential base)
     NOTIFICATION_RETRY_MAX_DELAY: float = 60.0
-
-    # ── Rate limiting (Redis-backed) ──────────────────────────────────────────
-    RATE_LIMIT_ENABLED: bool = True
-    RATE_LIMIT_REQUESTS: int = 100
-    RATE_LIMIT_WINDOW_SECONDS: int = 60
-
-    # ── Caching ───────────────────────────────────────────────────────────────
-    BRANCH_CONTACT_CACHE_TTL: int = 300  # seconds
-
-    # ── Statistics cache ──────────────────────────────────────────────────────
-    STATS_CACHE_TTL: int = 60  # seconds
 
     # ─── Validators ──────────────────────────────────────────────────────────
 

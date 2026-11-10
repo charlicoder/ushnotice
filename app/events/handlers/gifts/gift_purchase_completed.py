@@ -332,14 +332,3 @@ class GiftPurchaseCompletedHandler:
                 logger.info("gift_purchase_recipient_whatsapp_sent", gift_id=gift_id)
         except Exception as exc:
             logger.warning("gift_purchase_recipient_whatsapp_failed", gift_id=gift_id, error=str(exc))
-
-        # Record in Redis that this recipient was notified (with TTL 24h)
-        try:
-            from app.core.redis import get_redis
-            redis_client = get_redis()
-            norm_phone = "".join(c for c in recipient_phone if c.isdigit())
-            if norm_phone:
-                await redis_client.setex(f"voucher_recipient_notified:{norm_phone}", 86400, "1")
-                await redis_client.delete(f"voucher_recipient_pending:{norm_phone}")
-        except Exception as exc:
-            logger.debug("voucher_recipient_redis_set_failed", error=str(exc))

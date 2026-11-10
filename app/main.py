@@ -3,7 +3,7 @@ Main FastAPI Application Entry Point for `ushnotice`.
 
 Configures:
 - Structured JSON logging
-- Database & Redis connection lifespans
+- Database connection lifespan
 - AWS SQS Consumer background worker
 - Middlewares (Request ID, Tracing, CORS)
 - API v1 routers
@@ -22,7 +22,6 @@ from app.common.request_id import RequestIDMiddleware
 from app.core.config import get_settings
 from app.core.database import close_db, init_db
 from app.core.logging import configure_logging, get_logger
-from app.core.redis import close_redis, init_redis
 from app.events.consumer.sqs_consumer import SQSConsumer
 from app.events.registry.handler_registry import build_default_registry
 from app.events.router import EventRouter
@@ -44,7 +43,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
 
     await init_db()
-    await init_redis()
 
     # Build Event Registry & Router
     registry = build_default_registry()
@@ -64,7 +62,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 2. Shutdown
     logger.info("Shutting down ushnotice...")
     await sqs_consumer.stop()
-    await close_redis()
     await close_db()
     logger.info("ushnotice shutdown complete")
 

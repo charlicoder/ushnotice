@@ -22,8 +22,7 @@ USHSPA-TOKEN: <configured_token>
       "version": "1.0.0",
       "environment": "production",
       "checks": {
-        "database": "connected",
-        "redis": "connected"
+        "database": "connected"
       }
     }
     ```
@@ -69,4 +68,4 @@ USHSPA-TOKEN: <configured_token>
 
 ### 5. Statistics
 - `GET /v1/statistics`
-  - Returns delivery rate percentages and status/channel count distributions cached in Redis.
+  - Returns delivery rate percentages and status/channel count distributions from PostgreSQL.

@@ -510,6 +510,45 @@ class NotificationRepository:
             stmt = stmt.where(Notification.template_name.like(f"{template_prefix}%"))
         return (await self._db.execute(stmt)).scalar_one() > 0
 
+    async def has_sent_notification(
+        self,
+        *,
+        channel: str,
+        recipient: str,
+        template_name: str | None = None,
+        event_id: str | None = None,
+        booking_id: str | None = None,
+    ) -> bool:
+        """Check if a notification matching (channel, recipient, template_name, scope) was already sent."""
+        stmt = (
+            select(func.count())
+            .select_from(Notification)
+            .where(
+                Notification.channel == channel,
+                Notification.recipient == recipient,
+                Notification.status.in_([
+                    NotificationStatus.SENT.value,
+                    NotificationStatus.DELIVERED.value,
+                    "sent",
+                    "delivered",
+                ]),
+            )
+        )
+        if template_name:
+            stmt = stmt.where(Notification.template_name == template_name)
+        if booking_id:
+            stmt = stmt.where(Notification.booking_id == str(booking_id))
+        elif event_id:
+            stmt = stmt.where(
+                (Notification.event_id == str(event_id))
+                | (
+                    Notification.event_id.in_(
+                        select(Event.id).where(Event.event_id == str(event_id))
+                    )
+                )
+            )
+        return (await self._db.execute(stmt)).scalar_one() > 0
+
     async def list_failed(
         self,
         *,

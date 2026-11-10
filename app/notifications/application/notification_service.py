@@ -42,8 +42,18 @@ _OBJECT_SCOPED_PREFIXES = ("voucher/", "gifts/")
 class NotificationService:
     """Orchestrates notification dispatch, persistence, and delivery audit."""
 
+    # In-memory deduplication claims (key -> monotonic expiry timestamp).
+    # Survives DB session rollbacks when a handler partially fails after sending,
+    # while PostgreSQL `notifications` table serves as the persistent check.
+    _claims: dict[str, float] = {}
+
     def __init__(self, ctx: HandlerContext) -> None:
         self._ctx = ctx
+
+    @classmethod
+    def clear_dedup_claims(cls) -> None:
+        """Clear in-memory deduplication claims (used by test fixtures)."""
+        cls._claims.clear()
 
     @staticmethod
     def _dedup_key(req: NotificationRequest) -> str:
@@ -58,33 +68,52 @@ class NotificationService:
             f"{req.recipient.address}:{scope}"
         )
 
-    @staticmethod
-    async def _claim(key: str) -> bool | None:
-        """Atomically claim the right to send. True=claimed, False=duplicate, None=Redis unavailable."""
-        try:
-            from app.core.redis import get_redis
+    async def _claim(self, key: str, req: NotificationRequest | None = None) -> bool | None:
+        """Claim the right to send. True=claimed, False=duplicate."""
+        now = time.monotonic()
+        # Prune expired keys
+        expired = [k for k, exp in self._claims.items() if exp <= now]
+        for k in expired:
+            self._claims.pop(k, None)
 
-            return bool(await get_redis().set(key, "1", nx=True, ex=_DEDUP_TTL_SECONDS))
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("notification_dedup_unavailable", error=str(exc))
-            return None
+        if key in self._claims:
+            return False
 
-    @staticmethod
-    async def _release(key: str) -> None:
-        try:
-            from app.core.redis import get_redis
+        # Also check PostgreSQL notifications table if a real repository is attached
+        if req is not None:
+            try:
+                from app.notifications.infrastructure.repositories import NotificationRepository
 
-            await get_redis().delete(key)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("notification_dedup_release_failed", error=str(exc))
+                repo = getattr(self._ctx, "notification_repo", None)
+                if isinstance(repo, NotificationRepository):
+                    template = req.template_name or ""
+                    is_object_scoped = bool(req.booking_id and template.startswith(_OBJECT_SCOPED_PREFIXES))
+                    already_sent = await repo.has_sent_notification(
+                        channel=req.recipient.channel.value,
+                        recipient=req.recipient.address,
+                        template_name=req.template_name,
+                        booking_id=req.booking_id if is_object_scoped else None,
+                        event_id=None if is_object_scoped else req.event_id,
+                    )
+                    if already_sent:
+                        self._claims[key] = now + _DEDUP_TTL_SECONDS
+                        return False
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("notification_dedup_db_check_skipped", error=str(exc))
+
+        self._claims[key] = now + _DEDUP_TTL_SECONDS
+        return True
+
+    @classmethod
+    async def _release(cls, key: str) -> None:
+        cls._claims.pop(key, None)
 
     async def send(self, req: NotificationRequest) -> Notification:
         """Send a notification at most once per (template, channel, recipient, scope).
 
-        The claim lives in Redis (not the DB) on purpose: when a handler fails
-        after sending, the router rolls back the DB session — erasing the SENT
-        record — and SQS redelivers the event. A DB-based check would then miss
-        the earlier send and the recipient would receive the same SMS repeatedly.
+        Uses an in-memory TTL claim plus a PostgreSQL `notifications` check so that
+        even if a handler fails after sending and rolls back the DB session, SQS
+        redeliveries will not re-send the same SMS/WhatsApp message.
         """
         if req.recipient.channel == NotificationChannel.EMAIL:
             settings = get_settings()
@@ -106,7 +135,7 @@ class NotificationService:
                 )
 
         key = self._dedup_key(req)
-        claimed = await self._claim(key)
+        claimed = await self._claim(key, req)
         if claimed is False:
             logger.info(
                 "notification_duplicate_suppressed",

@@ -2,8 +2,7 @@
 Handler for `voucher.payment_pending` event.
 
 Fired when a gift voucher is created and awaiting payment confirmation.
-Marks the recipient phone as pending in Redis so that concurrent
-`customer.new_created` events do not dispatch duplicate generic welcome messages.
+No external notification is sent while payment is still pending.
 """
 from __future__ import annotations
 
@@ -15,7 +14,7 @@ logger = get_logger(__name__)
 
 
 class VoucherPaymentPendingHandler:
-    """Processes voucher.payment_pending events by caching recipient phone."""
+    """Processes voucher.payment_pending events as an acknowledged no-op."""
 
     event_type: str = "voucher.payment_pending"
 
@@ -28,16 +27,9 @@ class VoucherPaymentPendingHandler:
             or ""
         )
         norm_phone = "".join(c for c in recipient_phone if c.isdigit())
-        if norm_phone:
-            try:
-                from app.core.redis import get_redis
-                redis_client = get_redis()
-                await redis_client.setex(f"voucher_recipient_pending:{norm_phone}", 3600, "1")
-                logger.info(
-                    "voucher_payment_pending_cached_recipient",
-                    event_id=envelope.event_id_str,
-                    voucher_id=str(data.get("id") or ""),
-                    phone=norm_phone,
-                )
-            except Exception as exc:
-                logger.debug("voucher_payment_pending_redis_set_failed", error=str(exc))
+        logger.info(
+            "voucher_payment_pending_received",
+            event_id=envelope.event_id_str,
+            voucher_id=str(data.get("id") or ""),
+            phone=norm_phone,
+        )

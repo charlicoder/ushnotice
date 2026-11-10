@@ -11,14 +11,13 @@ from sqlalchemy import text
 
 from app.api.deps import DBSession
 from app.core.config import get_settings
-from app.core.redis import redis_health_check
 
 router = APIRouter(tags=["Health"])
 
 
 @router.get("/health", summary="Service Health and Readiness Check")
 async def health_check(db: DBSession) -> dict[str, Any]:
-    """Inspects DB and Redis connectivity."""
+    """Inspects database connectivity."""
     db_healthy = False
     try:
         await db.execute(text("SELECT 1"))
@@ -26,10 +25,9 @@ async def health_check(db: DBSession) -> dict[str, Any]:
     except Exception:
         db_healthy = False
 
-    redis_healthy = await redis_health_check()
     settings = get_settings()
 
-    is_healthy = db_healthy and redis_healthy
+    is_healthy = db_healthy
     resp_body = {
         "status": "healthy" if is_healthy else "unhealthy",
         "service": settings.APP_NAME,
@@ -37,7 +35,6 @@ async def health_check(db: DBSession) -> dict[str, Any]:
         "environment": settings.ENVIRONMENT,
         "checks": {
             "database": "connected" if db_healthy else "error",
-            "redis": "connected" if redis_healthy else "error",
         },
     }
 

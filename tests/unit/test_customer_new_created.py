@@ -109,14 +109,10 @@ async def test_customer_new_created_skipped_when_voucher_recipient_notified():
     mock_ctx = MagicMock(spec=HandlerContext)
     mock_svc = AsyncMock()
 
-    mock_redis = AsyncMock()
-    mock_redis.get.return_value = "1"
-
-    with patch("app.core.redis.get_redis", return_value=mock_redis), \
-         patch("app.events.handlers.auth.customer_new_created.NotificationService", return_value=mock_svc):
+    with patch("app.events.handlers.auth.customer_new_created.NotificationService", return_value=mock_svc):
         await handler.handle(envelope, mock_ctx)
 
-    # Skipped entirely because recipient was already notified via voucher.active
+    # Skipped entirely because pending customers are suppressed
     assert mock_svc.send.call_count == 0
 
 
@@ -133,15 +129,10 @@ async def test_customer_new_created_skipped_when_voucher_recipient_pending():
     mock_ctx = MagicMock(spec=HandlerContext)
     mock_svc = AsyncMock()
 
-    mock_redis = AsyncMock()
-    # notified is None, but pending is "1"
-    mock_redis.get.side_effect = lambda k: "1" if "pending" in k else None
-
-    with patch("app.core.redis.get_redis", return_value=mock_redis), \
-         patch("app.events.handlers.auth.customer_new_created.NotificationService", return_value=mock_svc):
+    with patch("app.events.handlers.auth.customer_new_created.NotificationService", return_value=mock_svc):
         await handler.handle(envelope, mock_ctx)
 
-    # Skipped entirely because voucher is pending and will notify on active
+    # Skipped entirely because pending customers are suppressed
     assert mock_svc.send.call_count == 0
 
 

@@ -91,28 +91,6 @@ class CustomerNewCreatedHandler:
                 )
             return
 
-        # Check if recipient is part of a gift voucher purchase (legacy password flow)
-        if norm_phone:
-            try:
-                import asyncio
-                from app.core.redis import get_redis
-                redis_client = get_redis()
-                # Check if voucher handler already notified or marked pending.
-                # If concurrent, poll briefly up to 1.5 seconds.
-                for attempt in range(5):
-                    if await redis_client.get(f"voucher_recipient_notified:{norm_phone}") or \
-                       await redis_client.get(f"voucher_recipient_pending:{norm_phone}"):
-                        logger.info(
-                            "customer_new_created_skipped_voucher_recipient",
-                            event_id=envelope.event_id_str,
-                            phone=norm_phone,
-                        )
-                        return
-                    if attempt < 4:
-                        await asyncio.sleep(0.3)
-            except Exception as exc:
-                logger.debug("voucher_recipient_redis_check_failed", error=str(exc))
-
         whatsapp_sent = False
 
         # 1. WhatsApp Welcome Notification

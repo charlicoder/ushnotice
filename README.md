@@ -65,7 +65,6 @@
 
 - Python 3.12+
 - PostgreSQL 15+
-- Redis 7+
 - AWS SQS Queue (or local simulator)
 
 ### Setup & Run
