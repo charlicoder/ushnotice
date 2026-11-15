@@ -98,11 +98,31 @@ class BookingPaymentStatusSuccessHandler:
                 or bool(invoice_data.get("voucher_id"))
                 or str(invoice_data.get("payment_method") or "").strip().lower() in ("voucher", "gift_voucher")
             )
+            _is_loyalty = (
+                str(invoice_data.get("payment_type") or "").strip().lower() == "rewarded"
+                or str(invoice_data.get("payment_status") or "").strip().lower() == "rewarded"
+                or str(invoice_data.get("booking_type") or "").strip().lower() == "loyalty"
+                or str(invoice_data.get("payment_provider") or "").strip().lower() == "loyalty"
+                or str(invoice_data.get("payment_method") or "").strip().lower() == "loyalty_points"
+                or bool(
+                    invoice_data.get("loyalty_data")
+                    and (
+                        invoice_data.get("loyalty_data", {}).get("points_cost")
+                        or invoice_data.get("loyalty_data", {}).get("booking_type") == "loyalty"
+                    )
+                )
+            )
             if is_course_redemption(invoice_data):
                 logger.info(
                     "booking_payment_status_success_invoice_skipped_course_redemption",
                     booking_id=booking_id,
                     message="Skipping invoice creation for course redemption; course was invoiced at activation.",
+                )
+            elif _is_loyalty:
+                logger.info(
+                    "booking_payment_status_success_invoice_skipped_loyalty",
+                    booking_id=booking_id,
+                    message="Skipping invoice creation for loyalty redemption.",
                 )
             elif not is_voucher_redemption:
                 await trigger_booking_invoice(invoice_data, correlation_id=correlation_id)

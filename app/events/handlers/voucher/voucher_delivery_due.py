@@ -13,6 +13,9 @@ On voucher.delivery_due, this handler:
 
 from __future__ import annotations
 
+import uuid
+
+from app.core.exceptions import ServiceClientError
 from app.core.logging import get_logger
 from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
@@ -31,10 +34,21 @@ class VoucherDeliveryDueHandler(EventHandler):
     async def handle(self, envelope: EventEnvelope, context: HandlerContext) -> None:
         data = envelope.data
         correlation_id = envelope.correlation_id_str
-        voucher_id = str(data.get("voucher_id") or data.get("id") or "")
+        raw_vid = data.get("voucher_id") or data.get("id")
 
-        if not voucher_id:
+        if not raw_vid or str(raw_vid).strip().lower() in ("none", "null", ""):
             logger.error("voucher_delivery_due_missing_voucher_id", data=data)
+            return
+
+        try:
+            valid_uuid = uuid.UUID(str(raw_vid).strip())
+            voucher_id = str(valid_uuid)
+        except (ValueError, TypeError, AttributeError):
+            logger.error(
+                "voucher_delivery_due_invalid_voucher_id",
+                raw_voucher_id=raw_vid,
+                data=data,
+            )
             return
 
         logger.info(
@@ -60,6 +74,21 @@ class VoucherDeliveryDueHandler(EventHandler):
                 voucher_id=voucher_id,
                 result=result,
             )
+        except ServiceClientError as exc:
+            if exc.status_code in (404, 422):
+                logger.error(
+                    "voucher_delivery_due_unrecoverable_client_error",
+                    voucher_id=voucher_id,
+                    status_code=exc.status_code,
+                    error=str(exc),
+                )
+                return
+            logger.error(
+                "voucher_delivery_due_activation_failed",
+                voucher_id=voucher_id,
+                error=str(exc),
+            )
+            raise
         except Exception as exc:
             logger.error(
                 "voucher_delivery_due_activation_failed",

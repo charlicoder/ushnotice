@@ -581,9 +581,9 @@ class BookingConfirmedHandler:
             try:
                 ushauth_client = UshAuthClient()
                 # payment_status in cache must be a value ushauth accepts:
-                # unpaid | success | pending | refunded | failed
-                # Map ushbooknpay-specific values (e.g. "rewarded") → "success"
-                _USHAUTH_VALID_PAYMENT_STATUSES = {"unpaid", "success", "pending", "refunded", "failed"}
+                # unpaid | success | pending | refunded | rewarded | failed | cancelled
+                # Map ushbooknpay-specific values if needed
+                _USHAUTH_VALID_PAYMENT_STATUSES = {"unpaid", "success", "pending", "refunded", "rewarded", "failed", "cancelled"}
                 _raw_ps: str = str(data.get("payment_status") or "success").lower()
                 cache_payment_status: str = _raw_ps if _raw_ps in _USHAUTH_VALID_PAYMENT_STATUSES else "success"
                 # ushauth BookingType only accepts: branch | home | leave
@@ -678,7 +678,21 @@ class BookingConfirmedHandler:
         # Course redemptions are prepaid by the course subscription (payment and
         # invoice were created at subscription activation) — treat like vouchers.
         _is_course_redemption: bool = is_course_redemption(data)
-        if booking_id and is_paid and not _is_gift_voucher and not _is_course_redemption:
+        _is_loyalty: bool = (
+            payment_type == "rewarded"
+            or str(data.get("payment_status") or "").lower() == "rewarded"
+            or str(data.get("booking_type") or "").lower() == "loyalty"
+            or str(data.get("payment_provider") or "").lower() == "loyalty"
+            or str(data.get("payment_method") or "").lower() == "loyalty_points"
+            or bool(
+                data.get("loyalty_data")
+                and (
+                    data.get("loyalty_data", {}).get("points_cost")
+                    or data.get("loyalty_data", {}).get("booking_type") == "loyalty"
+                )
+            )
+        )
+        if booking_id and is_paid and not _is_gift_voucher and not _is_course_redemption and not _is_loyalty:
             try:
                 booknpay_client = UshBookNPayClient()
                 pricing: dict = data.get("pricing") or {}
@@ -1229,8 +1243,14 @@ class BookingConfirmedHandler:
             or bool(data.get("voucher_id"))
             or str(data.get("payment_method") or "").strip().lower() in ("voucher", "gift_voucher")
         )
-        if booking_id and is_paid and not is_voucher_redemption and not _is_course_redemption:
+        if booking_id and is_paid and not is_voucher_redemption and not _is_course_redemption and not _is_loyalty:
             await trigger_booking_invoice(data, correlation_id=correlation_id)
+        elif _is_loyalty:
+            logger.info(
+                "booking_invoice_skipped_loyalty",
+                booking_id=booking_id,
+                message="Invoice creation skipped because booking is redeemed via loyalty points.",
+            )
         elif is_voucher_redemption:
             logger.info(
                 "booking_invoice_skipped_gift_voucher",

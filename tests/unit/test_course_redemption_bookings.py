@@ -197,6 +197,26 @@ async def test_confirmed_course_redemption_creates_no_payment_invoice_or_loyalty
 
 
 @pytest.mark.asyncio
+async def test_confirmed_loyalty_redemption_creates_no_payment_or_invoice():
+    loyalty_booking = {
+        "booking_id": "1c4a4255-1970-4487-9f52-f8e807104143",
+        "booking_number": "BOK/2026/11/000251",
+        "payment_status": "rewarded",
+        "payment_provider": "loyalty",
+        "payment_method": "loyalty_points",
+        "booking_type": "home_service",
+        "total_amount": "0.000",
+        "loyalty_data": {"points_cost": 500, "booking_type": "loyalty"},
+    }
+    r = await _run_confirmed(loyalty_booking)
+
+    r["booknpay"]._client.post.assert_not_awaited()
+    r["trigger_invoice"].assert_not_awaited()
+    r["ushauth"].create_appointment_cache.assert_awaited_once()
+    assert r["ushauth"].create_appointment_cache.await_args.kwargs["payment_status"] == "rewarded"
+
+
+@pytest.mark.asyncio
 async def test_confirmed_course_redemption_still_caches_and_notifies_without_amount():
     r = await _run_confirmed(COURSE_BOOKING)
 

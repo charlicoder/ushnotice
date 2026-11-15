@@ -182,3 +182,51 @@ async def test_voucher_delivery_due_handler_activates_voucher():
             },
             correlation_id=envelope.correlation_id_str,
         )
+
+
+@pytest.mark.asyncio
+async def test_voucher_delivery_due_handler_drops_invalid_or_none_voucher_id():
+    """VoucherDeliveryDueHandler gracefully drops messages with 'None' or invalid voucher_id without raising."""
+    for invalid_id in ["None", "null", "", "invalid-uuid", None]:
+        envelope = _make_envelope(
+            "voucher.delivery_due",
+            {
+                "voucher_id": invalid_id,
+                "scheduled_delivery_at": "2026-11-10T14:00:00",
+                "source": "aws_eventbridge_scheduler",
+            },
+        )
+        mock_client = AsyncMock()
+        handler = VoucherDeliveryDueHandler()
+
+        with patch("app.events.handlers.voucher.voucher_delivery_due.UshBookNPayClient", return_value=mock_client):
+            # Should not raise exception
+            await handler.handle(envelope, MagicMock())
+            mock_client.activate_scheduled_voucher.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_voucher_delivery_due_handler_handles_422_unrecoverable_error():
+    """VoucherDeliveryDueHandler handles 422/404 ServiceClientError without re-raising to prevent SQS poison loop."""
+    from app.core.exceptions import ServiceClientError
+
+    envelope = _make_envelope(
+        "voucher.delivery_due",
+        {
+            "voucher_id": "22222222-2222-2222-2222-222222222222",
+            "scheduled_delivery_at": "2026-11-10T14:00:00",
+            "source": "aws_eventbridge_scheduler",
+        },
+    )
+
+    mock_client = AsyncMock()
+    err = ServiceClientError("Unprocessable", service="ushbooknpay", status_code=422)
+    mock_client.activate_scheduled_voucher = AsyncMock(side_effect=err)
+    mock_client._client.aclose = AsyncMock()
+
+    handler = VoucherDeliveryDueHandler()
+
+    with patch("app.events.handlers.voucher.voucher_delivery_due.UshBookNPayClient", return_value=mock_client):
+        # Should catch 422 and return gracefully without raising
+        await handler.handle(envelope, MagicMock())
+
