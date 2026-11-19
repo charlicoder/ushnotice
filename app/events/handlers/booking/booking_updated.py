@@ -588,34 +588,9 @@ class BookingUpdatedHandler:
                 except Exception as exc:
                     logger.warning("booking_updated_whatsapp_failed", booking_id=booking_id, error=str(exc))
 
-        # Fallback to SMS if WhatsApp was not sent
-        if not whatsapp_sent:
-            sms_recipient = ChannelResolver.resolve_sms_recipient(data, default_lang=default_lang_to_use)
-            if sms_recipient:
-                name = sms_recipient.name or customer_name
-                sms_body = (
-                    _sms_updated_message_en(context, name)
-                    if is_english
-                    else _sms_updated_message_ar(context, name)
-                )
-                req_sms = NotificationRequest(
-                    event_id=envelope.event_id_str,
-                    recipient=sms_recipient,
-                    template_name="booking/updated_sms",
-                    template_context={
-                        **context,
-                        "customer_name": name,
-                        "message_body": sms_body,
-                        "language": "en" if is_english else "ar",
-                    },
-                    customer_id=customer_id or None,
-                    booking_id=booking_id or None,
-                    correlation_id=correlation_id,
-                )
-                try:
-                    await service.send(req_sms)
-                    logger.info("booking_updated_sms_sent", booking_id=booking_id, language=default_lang_to_use)
-                except Exception as exc:
-                    logger.warning("booking_updated_sms_failed", booking_id=booking_id, error=str(exc))
-            else:
-                logger.info("booking_updated_sms_skipped_no_recipient", booking_id=booking_id)
+        # SMS notification stopped for ushbooknpay booking events per policy
+        logger.info(
+            "booking_updated_sms_suppressed_by_policy",
+            booking_id=booking_id,
+            language=default_lang_to_use,
+        )

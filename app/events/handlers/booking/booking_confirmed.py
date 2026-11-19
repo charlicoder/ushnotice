@@ -1396,46 +1396,13 @@ class BookingConfirmedHandler:
                         error=str(exc),
                     )
 
-        # SMS — only if WhatsApp was NOT sent
-        if not whatsapp_sent and not _skip_generic_sms:
-            sms_recipient = ChannelResolver.resolve_sms_recipient(data)
-            if sms_recipient:
-                # Booking confirmation SMS for payment_status=success must be sent in Arabic version
-                sms_recipient = replace(sms_recipient, language="ar")
-                sms_body = _sms_message_ar(context, sms_recipient.name or customer_name)
-                req_sms = NotificationRequest(
-                    event_id=envelope.event_id_str,
-                    recipient=sms_recipient,
-                    template_name="booking/confirmed_sms",
-                    template_context={
-                        **context,
-                        "customer_name": sms_recipient.name or customer_name,
-                        "message_body": sms_body,
-                        "language": "ar",
-                    },
-                    customer_id=customer_id or None,
-                    booking_id=booking_id or None,
-                    correlation_id=correlation_id,
-                )
-                try:
-                    await service.send(req_sms)
-                    logger.info(
-                        "booking_confirmed_sms_sent",
-                        booking_id=booking_id,
-                        customer_id=customer_id,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "booking_confirmed_sms_failed",
-                        booking_id=booking_id,
-                        error=str(exc),
-                    )
-            else:
-                logger.info(
-                    "booking_confirmed_sms_skipped_no_recipient",
-                    booking_id=booking_id,
-                    customer_phone=data.get("customer_phone") or "",
-                )
+        # SMS notification stopped for ushbooknpay booking events per policy
+        # (bookings only use WhatsApp/Email notifications)
+        logger.info(
+            "booking_confirmed_sms_suppressed_by_policy",
+            booking_id=booking_id,
+            customer_id=customer_id,
+        )
 
         # Email — independent, sent if email is present
         email_recipient = ChannelResolver.resolve_email_recipient(data)
@@ -1547,52 +1514,12 @@ class BookingConfirmedHandler:
                         error=str(exc),
                     )
 
-        # SMS — only if WhatsApp was NOT sent
-        if not whatsapp_sent:
-            sms_recipient = ChannelResolver.resolve_sms_recipient(data)
-            if sms_recipient:
-                if str(sms_recipient.language).strip().lower().startswith("en"):
-                    sms_body = _sms_pending_payment_message(
-                        context, sms_recipient.name or customer_name, payment_link
-                    )
-                else:
-                    sms_body = _sms_pending_payment_message_ar(
-                        context, sms_recipient.name or customer_name, payment_link
-                    )
-                req_sms = NotificationRequest(
-                    event_id=envelope.event_id_str,
-                    recipient=sms_recipient,
-                    template_name="booking/confirmed_pending_payment_sms",
-                    template_context={
-                        **context,
-                        "customer_name": sms_recipient.name or customer_name,
-                        "payment_link": payment_link,
-                        "message_body": sms_body,
-                    },
-                    customer_id=customer_id or None,
-                    booking_id=booking_id or None,
-                    correlation_id=correlation_id,
-                )
-                try:
-                    await service.send(req_sms)
-                    logger.info(
-                        "booking_confirmed_pending_payment_sms_sent",
-                        booking_id=booking_id,
-                        customer_id=customer_id,
-                        payment_link=payment_link,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "booking_confirmed_pending_payment_sms_failed",
-                        booking_id=booking_id,
-                        error=str(exc),
-                    )
-            else:
-                logger.info(
-                    "booking_confirmed_pending_payment_sms_skipped_no_recipient",
-                    booking_id=booking_id,
-                    customer_phone=data.get("customer_phone") or "",
-                )
+        # SMS notification stopped for ushbooknpay booking events per policy
+        logger.info(
+            "booking_confirmed_pending_payment_sms_suppressed_by_policy",
+            booking_id=booking_id,
+            customer_id=customer_id,
+        )
 
         # Email — independent, sent if email is present
         email_recipient = ChannelResolver.resolve_email_recipient(data)

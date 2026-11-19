@@ -433,33 +433,8 @@ class VoucherRedeemedHandler:
             except Exception as exc:
                 logger.warning(f"voucher_redeemed_{audience}_whatsapp_failed", voucher_id=voucher_id, error=str(exc))
 
-            # SMS fallback (only sent if WhatsApp was NOT sent)
-            if not whatsapp_sent:
-                try:
-                    if party_lang == "en":
-                        sms_body = _redeemed_sms_message(vctx, audience)
-                    else:
-                        sms_body = _redeemed_sms_message_ar(vctx, audience)
-                    sms_payload = {
-                        "phone_number": phone,
-                        "customer_name": name,
-                        "language_preference": party_lang,
-                    }
-                    sms_recipient = ChannelResolver.resolve_sms_recipient(sms_payload)
-                    if sms_recipient:
-                        req = NotificationRequest(
-                            event_id=envelope.event_id_str,
-                            recipient=sms_recipient,
-                            template_name=f"{tpl_prefix}_sms",
-                            template_context={**vctx, "message_body": sms_body, "audience": audience},
-                            customer_id=None,
-                            booking_id=voucher_id or None,
-                            correlation_id=correlation_id,
-                        )
-                        await service.send(req)
-                        logger.info(f"voucher_redeemed_{audience}_sms_sent", voucher_id=voucher_id)
-                except Exception as exc:
-                    logger.warning(f"voucher_redeemed_{audience}_sms_failed", voucher_id=voucher_id, error=str(exc))
+            # SMS fallback stopped for voucher redemption events per policy
+            logger.info(f"voucher_redeemed_{audience}_sms_suppressed_by_policy", voucher_id=voucher_id)
 
         # Email
         if email:

@@ -464,58 +464,13 @@ class ShopOrderCreatedHandler:
                     event_id=correlation_id,
                 )
 
-        # ── 3. SMS (fallback — always sent if WhatsApp was not confirmed) ─────
-        if not whatsapp_sent:
-            sms_recipient = ChannelResolver.resolve_sms_recipient(data)
-            if sms_recipient:
-                is_en = str(sms_recipient.language).strip().lower().startswith("en")
-                sms_body = en_sms if is_en else ar_sms
-                req_sms = NotificationRequest(
-                    event_id=correlation_id,
-                    recipient=sms_recipient,
-                    template_name="shop/order_created_sms",
-                    template_context={
-                        **base_context,
-                        "customer_name": sms_recipient.name or customer_name,
-                        "message_body": sms_body,
-                    },
-                    customer_id=customer_id or None,
-                    correlation_id=correlation_id,
-                )
-                try:
-                    notification = await service.send(req_sms)
-                    if notification.status in (
-                        NotificationStatus.SENT.value,
-                        NotificationStatus.DELIVERED.value,
-                    ):
-                        logger.info(
-                            "shop_order_created_sms_sent",
-                            order_number=order_number,
-                            customer_id=customer_id,
-                            status=notification.status,
-                            event_id=correlation_id,
-                        )
-                    else:
-                        logger.warning(
-                            "shop_order_created_sms_not_delivered",
-                            order_number=order_number,
-                            status=notification.status,
-                            event_id=correlation_id,
-                        )
-                except Exception as exc:
-                    logger.warning(
-                        "shop_order_created_sms_exception",
-                        order_number=order_number,
-                        error=str(exc),
-                        event_id=correlation_id,
-                    )
-            else:
-                logger.warning(
-                    "shop_order_created_no_sms_recipient",
-                    order_number=order_number,
-                    reason="No phone number found in event payload",
-                    event_id=correlation_id,
-                )
+        # SMS notification stopped for shop order events from ushbooknpay per policy
+        logger.info(
+            "shop_order_created_sms_suppressed_by_policy",
+            order_number=order_number,
+            customer_id=customer_id,
+            event_id=correlation_id,
+        )
 
         if not whatsapp_sent and not (wa_recipient or ChannelResolver.resolve_sms_recipient(data)):
             logger.warning(

@@ -463,6 +463,17 @@ class VoucherActiveHandler:
         recipient_digits = "".join(c for c in recipient_phone if c.isdigit())
         is_self_gift = bool(sender_digits and recipient_digits and sender_digits == recipient_digits)
 
+        # Detect whether this voucher is being activated from a scheduled delivery
+        is_from_scheduled = bool(
+            str(data.get("delivery_mode") or "").strip().lower() == "scheduled"
+            or data.get("scheduled_delivery_at")
+            or (data.get("delivery_result") or {}).get("source") == "scheduler"
+            or any(
+                isinstance(h, dict) and h.get("action") == "scheduled_delivery_activated"
+                for h in (data.get("update_history") or [])
+            )
+        )
+
         if sender_phone:
             if is_self_gift:
                 logger.info(
@@ -479,6 +490,7 @@ class VoucherActiveHandler:
                     sender_name=sender_name,
                     voucher_id=voucher_id,
                     correlation_id=correlation_id,
+                    is_from_scheduled=is_from_scheduled,
                 )
         else:
             logger.info("voucher_active_sender_no_phone", voucher_id=voucher_id)
@@ -493,6 +505,7 @@ class VoucherActiveHandler:
                 recipient_name=recipient_name,
                 voucher_id=voucher_id,
                 correlation_id=correlation_id,
+                is_from_scheduled=is_from_scheduled,
             )
         else:
             logger.info("voucher_active_recipient_no_contact", voucher_id=voucher_id)
@@ -805,6 +818,7 @@ class VoucherActiveHandler:
         sender_name: str,
         voucher_id: str,
         correlation_id: str | None,
+        is_from_scheduled: bool = False,
     ) -> None:
         """Send WhatsApp/SMS + Email to the gift sender."""
         sender_lang = "en" if str(vctx.get("sender_language") or "").strip().lower().startswith("en") else "ar"
@@ -849,8 +863,8 @@ class VoucherActiveHandler:
         except Exception as exc:
             logger.warning("voucher_active_sender_whatsapp_failed", voucher_id=voucher_id, error=str(exc))
 
-        # SMS fallback (only sent if WhatsApp was NOT sent)
-        if not whatsapp_sent:
+        # SMS fallback (only sent if WhatsApp was NOT sent, and ONLY after payment success for non-scheduled vouchers)
+        if not is_from_scheduled and not whatsapp_sent:
             try:
                 # All SMS must be in Arabic with no price or amount
                 sms_body = _sender_sms_message_ar(vctx)
@@ -923,6 +937,7 @@ class VoucherActiveHandler:
         recipient_name: str,
         voucher_id: str,
         correlation_id: str | None,
+        is_from_scheduled: bool = False,
     ) -> None:
         # Recipient messages must always be sent in Arabic as requested
         recipient_lang = "ar"

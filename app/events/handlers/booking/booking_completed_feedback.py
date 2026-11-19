@@ -146,23 +146,9 @@ class BookingCompletedFeedbackHandler:
             except Exception as exc:
                 logger.warning("booking_feedback_whatsapp_failed", booking_id=booking_id, error=str(exc))
 
-        # 2. SMS — only when WhatsApp was not sent
-        if not whatsapp_sent:
-            if sms_recipient is None:
-                logger.info("booking_feedback_sms_skipped_no_recipient", booking_id=booking_id)
-                return
-            try:
-                await service.send(
-                    NotificationRequest(
-                        event_id=envelope.event_id_str,
-                        recipient=sms_recipient,
-                        template_name="booking/feedback_sms",
-                        template_context=base_ctx,
-                        customer_id=customer_id or None,
-                        booking_id=booking_id,
-                        correlation_id=correlation_id,
-                    )
-                )
-                logger.info("booking_feedback_sms_sent", booking_id=booking_id)
-            except Exception as exc:
-                logger.warning("booking_feedback_sms_failed", booking_id=booking_id, error=str(exc))
+        # SMS notification stopped for booking completion per policy
+        # (feedback SMS is explicitly triggered by ushdesk staff after prompt)
+        logger.info(
+            "booking_feedback_sms_suppressed_by_policy",
+            booking_id=booking_id,
+        )

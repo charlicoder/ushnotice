@@ -37,18 +37,8 @@ class PaymentRefundedHandler:
         voucher_id = str(data.get("voucher_id") or "")
         correlation_id = envelope.correlation_id_str
 
-        sms_recipient = ChannelResolver.resolve_sms_recipient(data)
-        if sms_recipient:
-            req_sms = NotificationRequest(
-                event_id=envelope.event_id_str,
-                recipient=sms_recipient,
-                template_name="booking/payment_failed",
-                template_context={**context, "customer_name": sms_recipient.name},
-                customer_id=customer_id or None,
-                booking_id=booking_id or None,
-                correlation_id=correlation_id,
-            )
-            await service.send(req_sms)
+        # SMS notification stopped for ushbooknpay payment events per policy
+        logger.info("payment_refunded_sms_suppressed_by_policy", booking_id=booking_id, customer_id=customer_id)
 
         email_recipient = ChannelResolver.resolve_email_recipient(data)
         if email_recipient:

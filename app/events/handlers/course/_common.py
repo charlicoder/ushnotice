@@ -238,31 +238,11 @@ async def send_course_notification(
                     error=str(exc),
                 )
 
-    # SMS fallback
-    sms_recipient = ChannelResolver.resolve_sms_recipient(base_payload)
-    if not sms_recipient:
-        return None
-    sms_recipient = replace(sms_recipient, language=lang)
-    body = sms_en if sms_recipient.language == "en" else sms_ar
-    req = NotificationRequest(
-        event_id=envelope.event_id_str,
-        recipient=sms_recipient,
-        template_name=f"{TEMPLATE_PREFIX}/{template_key}_sms",
-        template_context={**base_context, "message_body": body},
-        customer_id=customer_id,
-        booking_id=entity_id or None,
-        correlation_id=correlation_id,
+    # SMS fallback stopped for ushbooknpay course subscription events per policy
+    logger.info(
+        "course_notification_sms_suppressed_by_policy",
+        template_key=template_key,
+        entity_id=entity_id,
     )
-    try:
-        await service.send(req)
-        logger.info("course_notification_sms_sent", template_key=template_key, entity_id=entity_id)
-        return "sms"
-    except Exception as exc:
-        logger.warning(
-            "course_notification_sms_failed",
-            template_key=template_key,
-            entity_id=entity_id,
-            error=str(exc),
-        )
-        return None
+    return None
 

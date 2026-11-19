@@ -361,9 +361,10 @@ class TestVoucherDeduplication:
     @pytest.mark.asyncio
     async def test_voucher_active_falls_back_to_sms_when_whatsapp_fails(self):
         handler = VoucherActiveHandler()
-        # Different phones so sender is not skipped
+        # Different phones so sender is not skipped, delivery_mode="scheduled" so recipient SMS fallback fires
         data = {
             **SAMPLE_VOUCHER_DATA,
+            "delivery_mode": "scheduled",
             "sender_details": {"name": "Sara", "phone_number": "+96599112233"},
             "recipient_details": {"name": "Noura", "phone_number": "+96599887766"},
             "recipient_phone": "+96599887766",
