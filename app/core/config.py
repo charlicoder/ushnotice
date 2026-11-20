@@ -132,6 +132,9 @@ class Settings(BaseSettings):
     SMS_PROVIDER: Literal["kwtsms", "twilio", "stub"] = "kwtsms"
 
     # ── WhatsApp Provider (Meta Cloud API) ────────────────────────────────────
+    META_WA_BUSINESS_ACCOUNT_ID: str = ""
+    META_WA_MESSAGING_ACCOUNT_ID: str = ""
+    META_WA_PHONE_NUMBER: str = ""
     META_WA_PHONE_NUMBER_ID: str = ""
     META_WA_ACCESS_TOKEN: SecretStr = SecretStr("")
     META_WA_API_VERSION: str = "v20.0"
