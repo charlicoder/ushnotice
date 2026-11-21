@@ -13,6 +13,10 @@ from app.events.schemas.envelope import EventEnvelope
 from app.invoicing.triggers import trigger_gift_purchase_invoice
 from app.notifications.application.channel_resolver import ChannelResolver
 from app.notifications.application.notification_service import NotificationService
+from app.notifications.application.whatsapp_templates import (
+    TEMPLATE_GIFT_VOUCHER_NOTIFICATION,
+    build_gift_voucher_notification_components,
+)
 from app.notifications.domain.value_objects import NotificationRequest
 
 logger = get_logger(__name__)
@@ -306,9 +310,14 @@ class GiftPurchaseCompletedHandler:
         gift_id: str,
         correlation_id: str | None,
     ) -> None:
-        """Send WhatsApp to the gift recipient with secret_code and link."""
+        """Send WhatsApp to the gift recipient with secret_code and link.
+
+        Uses the approved Meta template ``ush_gift_voucher_notification``
+        (ID: 3303773023154347) so the message is delivered even outside the
+        24-hour customer-service window.
+        """
         try:
-            # Recipient messages must always be sent in Arabic as requested
+            # Recipient messages always use Arabic template as default
             lang = "ar"
             wa_body = _recipient_whatsapp_message_ar(gctx)
 
@@ -327,8 +336,16 @@ class GiftPurchaseCompletedHandler:
                     customer_id=None,
                     booking_id=gift_id or None,
                     correlation_id=correlation_id,
+                    # ── Meta WhatsApp Business template ──────────────────
+                    wa_template_name=TEMPLATE_GIFT_VOUCHER_NOTIFICATION,
+                    wa_template_language=lang,
+                    wa_template_components=build_gift_voucher_notification_components(gctx),
                 )
                 await service.send(req)
-                logger.info("gift_purchase_recipient_whatsapp_sent", gift_id=gift_id)
+                logger.info(
+                    "gift_purchase_recipient_whatsapp_sent",
+                    gift_id=gift_id,
+                    wa_template=TEMPLATE_GIFT_VOUCHER_NOTIFICATION,
+                )
         except Exception as exc:
             logger.warning("gift_purchase_recipient_whatsapp_failed", gift_id=gift_id, error=str(exc))

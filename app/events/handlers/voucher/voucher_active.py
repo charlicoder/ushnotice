@@ -26,6 +26,10 @@ from app.invoicing.triggers import trigger_voucher_invoice
 from app.notifications.application.channel_resolver import ChannelResolver
 from app.notifications.application.notification_service import NotificationService
 from app.notifications.domain.enums import NotificationChannel, NotificationStatus
+from app.notifications.application.whatsapp_templates import (
+    TEMPLATE_GIFT_VOUCHER_NOTIFICATION,
+    build_gift_voucher_notification_components,
+)
 from app.notifications.domain.value_objects import NotificationRequest, Recipient
 
 logger = get_logger(__name__)
@@ -444,12 +448,16 @@ class VoucherActiveHandler:
             return
 
         # ── 3. Notify SENDER ─────────────────────────────────────────────────
-        sender_details: dict = data.get("sender_details") or {}
+        # NOTE: the ushbooknpay VoucherActiveEvent snapshot uses `sender_data`
+        # (not `sender_details`).  Accept both keys for forward-compatibility.
+        sender_details: dict = data.get("sender_data") or data.get("sender_details") or {}
         sender_phone = sender_details.get("phone_number") or data.get("sender_phone") or ""
         sender_name = vctx["sender_name"]
 
         # ── 4. Notify RECIPIENT ──────────────────────────────────────────────
-        recipient_details: dict = data.get("recipient_details") or {}
+        # NOTE: the ushbooknpay VoucherActiveEvent snapshot uses `recipient_data`
+        # (not `recipient_details`).  Accept both keys for forward-compatibility.
+        recipient_details: dict = data.get("recipient_data") or data.get("recipient_details") or {}
         recipient_phone = (
             recipient_details.get("phone_number")
             or data.get("recipient_phone")
@@ -528,7 +536,7 @@ class VoucherActiveHandler:
         try:
             client = UshBookNPayClient()
             payment_data: dict = data.get("payment_data") or {}
-            sender_details: dict = data.get("sender_details") or data.get("sender_data") or {}
+            sender_details: dict = data.get("sender_data") or data.get("sender_details") or {}
 
             # ── Derive gateway-level and invoice fields ───────────────────
             invoice_number: str | None = (
@@ -954,6 +962,8 @@ class VoucherActiveHandler:
                 }
                 wa_recipient = ChannelResolver.resolve_whatsapp_recipient(recipient_payload)
                 if wa_recipient:
+                    # Build Meta template components for ush_gift_voucher_notification
+                    wa_components = build_gift_voucher_notification_components(vctx)
                     req = NotificationRequest(
                         event_id=envelope.event_id_str,
                         recipient=wa_recipient,
@@ -962,6 +972,9 @@ class VoucherActiveHandler:
                         customer_id=None,
                         booking_id=voucher_id or None,
                         correlation_id=correlation_id,
+                        wa_template_name=TEMPLATE_GIFT_VOUCHER_NOTIFICATION,
+                        wa_template_language="ar",
+                        wa_template_components=wa_components,
                     )
                     notification = await service.send(req)
                     status_val = getattr(notification, "status", None)

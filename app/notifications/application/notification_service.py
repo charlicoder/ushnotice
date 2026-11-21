@@ -260,9 +260,19 @@ class NotificationService:
                     )
                 elif channel == NotificationChannel.WHATSAPP:
                     wa_prov = get_whatsapp_provider()
+                    # Use a Meta template message when wa_template_name is set;
+                    # otherwise fall back to free-form text (24-h window only).
+                    _wa_tpl_lang = (
+                        req.wa_template_language
+                        or req.recipient.language
+                        or "ar"
+                    )
                     result = await wa_prov.send_message(
                         to=req.recipient.address,
                         body=rendered_body,
+                        template_name=req.wa_template_name or None,
+                        template_language=_wa_tpl_lang if req.wa_template_name else None,
+                        template_components=list(req.wa_template_components) if req.wa_template_components else [],
                     )
                 elif channel == NotificationChannel.EMAIL:
                     email_prov = get_email_provider()

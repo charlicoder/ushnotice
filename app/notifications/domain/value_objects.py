@@ -115,6 +115,14 @@ class NotificationRequest:
         customer_id: Optional customer UUID for traceability.
         booking_id: Optional booking UUID for traceability.
         correlation_id: Propagated from the originating event envelope.
+        wa_template_name: Meta WhatsApp Business template name. When set the
+            WhatsApp provider sends a template message instead of free-form text.
+        wa_template_language: BCP-47 language code for the template (e.g.
+            ``"ar"`` or ``"en"``). Defaults to the recipient's language when
+            *wa_template_name* is provided.
+        wa_template_components: List of Meta template component objects
+            (header, body parameters, buttons, etc.) to include in the
+            template message payload.
     """
 
     event_id: str
@@ -125,3 +133,6 @@ class NotificationRequest:
     customer_id: str | None = None
     booking_id: str | None = None
     correlation_id: str | None = None
+    wa_template_name: str | None = None
+    wa_template_language: str | None = None
+    wa_template_components: list | None = None

@@ -13,6 +13,10 @@ from app.events.handlers.base import EventHandler, HandlerContext
 from app.events.schemas.envelope import EventEnvelope
 from app.notifications.application.channel_resolver import ChannelResolver
 from app.notifications.application.notification_service import NotificationService
+from app.notifications.application.whatsapp_templates import (
+    TEMPLATE_GIFT_BOOKING_CONFIRMATION,
+    build_gift_booking_confirmation_components,
+)
 from app.notifications.domain.enums import NotificationStatus
 from app.notifications.domain.value_objects import NotificationRequest
 
@@ -388,7 +392,12 @@ class VoucherRedeemedHandler:
         voucher_id: str,
         correlation_id: str | None,
     ) -> None:
-        """Send WhatsApp/SMS + Email to a specific person (sender or recipient)."""
+        """Send WhatsApp/SMS + Email to a specific person (sender or recipient).
+
+        For the **recipient** the WhatsApp message uses the approved Meta
+        template ``ush_gitf_booking_confirmation`` (ID: 29463619926566333).
+        The sender still receives a free-form text message.
+        """
         tpl_prefix = f"voucher/redeemed_{audience}"
         party_lang = "en" if str(vctx.get(f"{audience}_language") or "").strip().lower().startswith("en") else "ar"
         whatsapp_sent = False
@@ -407,6 +416,14 @@ class VoucherRedeemedHandler:
                 }
                 wa_recipient = ChannelResolver.resolve_whatsapp_recipient(wa_payload)
                 if wa_recipient:
+                    # Recipient gets a Meta template message (booking confirmation).
+                    # Sender gets a standard free-form text message.
+                    _wa_tpl_name = TEMPLATE_GIFT_BOOKING_CONFIRMATION if audience == "recipient" else None
+                    _wa_tpl_components = (
+                        build_gift_booking_confirmation_components(vctx)
+                        if audience == "recipient"
+                        else None
+                    )
                     req = NotificationRequest(
                         event_id=envelope.event_id_str,
                         recipient=wa_recipient,
@@ -415,6 +432,10 @@ class VoucherRedeemedHandler:
                         customer_id=None,
                         booking_id=voucher_id or None,
                         correlation_id=correlation_id,
+                        # ── Meta WhatsApp Business template (recipient only) ──
+                        wa_template_name=_wa_tpl_name,
+                        wa_template_language=party_lang if _wa_tpl_name else None,
+                        wa_template_components=_wa_tpl_components,
                     )
                     notification = await service.send(req)
                     status_val = getattr(notification, "status", None)
@@ -429,6 +450,7 @@ class VoucherRedeemedHandler:
                         f"voucher_redeemed_{audience}_whatsapp_sent",
                         voucher_id=voucher_id,
                         status=str(status_val),
+                        wa_template=_wa_tpl_name or "free_text",
                     )
             except Exception as exc:
                 logger.warning(f"voucher_redeemed_{audience}_whatsapp_failed", voucher_id=voucher_id, error=str(exc))

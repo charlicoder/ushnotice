@@ -74,7 +74,10 @@ class Settings(BaseSettings):
     # Public-facing base URL for gift voucher pages sent to customers.
     # Format: https://ushspa.co/gift  (no trailing slash)
     # The full gift voucher link will be: {USH_GIFT_VOUCHER_BASE_URL}/{public_token}
-    USH_GIFT_VOUCHER_BASE_URL: str = "https://ushspa.co/gift"
+    USH_GIFT_VOUCHER_BASE_URL: str = "https://ushwellness.com/gift"
+
+    # Header image for WhatsApp gift voucher notification template
+    USH_GIFT_VOUCHER_HEADER_IMAGE: str = "https://dezandlpaipb3.cloudfront.net/services/service/b3d1dfcc-3bef-4851-be9d-6c7c2c47f78e/61f5d60c4c8d40dbba9bcd34f33fce16_medium.webp"
 
     # ── ushanr accounting entity UUIDs ────────────────────────────────────────
     # Set these to the actual UUIDs from your ushanr database.
